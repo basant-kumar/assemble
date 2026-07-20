@@ -191,7 +191,7 @@ budget:                                                # 💼 pepper (ledger) �
 
 # ---------------------------------------------------------------------------
 # One-off overrides without editing config:
-#   ASSEMBLE_STAGE_code-review_MODEL=gemini-flash assemble stage run code-review
+#   ASSEMBLE_STAGE_code-review_MODEL=gemini-flash assemble code-review
 # Ad-hoc off-book mission — 🥷 ronin (ad-hoc), never mutates run state:
-#   assemble stage run code-review --adhoc --target src/auth/
+#   assemble code-review --adhoc --target src/auth/
 # ---------------------------------------------------------------------------

@@ -40,7 +40,7 @@ exploration — where the human converses) run in the user's Claude Code session
 via thin skills. Mechanical stages (review loops, implement batches, gates,
 release checks) are executed by the `assemble` CLI. The state machine lives in the
 CLI in both cases: a skill cannot advance a stage without a recorded verdict,
-because the next `assemble stage run` hard-fails on a missing/failed gate.
+because the next `assemble <stage>` invocation hard-fails on a missing/failed gate.
 
 - **Distribution:** npm-installed TypeScript CLI (`assemble`) + thin Claude Code
   skills. Node is assumed present (Claude Code users have it).
@@ -80,7 +80,7 @@ your-repo/
 | Component | One purpose | Consumed via |
 |---|---|---|
 | Config | Load/validate/resolve `assemble.config.yaml` + presets | typed accessor module |
-| Stage engine | State machine; only writer of stage status | `assemble stage run`, `assemble gate *` |
+| Stage engine | State machine; only writer of stage status | `assemble <stage>`, `assemble gate *` |
 | Adapters | Uniform provider invocation | `Adapter` interface |
 | Verdicts | JSON verdict schemas + parse/retry | verdict parser |
 | Ledger | Append-only accounting | `assemble status`, `assemble report` |
@@ -94,9 +94,9 @@ your-repo/
 - **Presets** (`mode:`): `solo` (one model everywhere), `duo` (writer +
   cross-provider reviewer), `full` (distinct model per stage). Users graduate to
   per-stage tuning only when they want it.
-- **Direct stage invocation**: any stage runs standalone.
+- **Direct stage invocation**: any stage runs standalone. Every stage id in `assemble.config.yaml` auto-registers as a top-level command — `assemble plan`, `assemble implement`, `assemble code-review`, even custom stages. `assemble stage run <id>` remains the explicit long-form (scripts/CI, shadowed names). Stage ids are validated at config load against a reserved-word list (`run`, `init`, `status`, `gate`, `report`, `models`, `config`, `clean`, `adhoc`, `resume` — documented as may-grow).
   - *Pipeline mode* (default in an active run): gates enforced.
-  - *Ad-hoc mode*: `assemble stage run code-review --adhoc [--target <path|range>]`
+  - *Ad-hoc mode*: `assemble code-review --adhoc [--target <path|range>]`
     — no prerequisites, any target, ledger-tagged `adhoc`, never mutates run
     state. Replaces TRIP's `/TRIP-review`, `/TRIP-test`, `/codex-ask` with one
     uniform mechanism.
@@ -398,4 +398,5 @@ interface Adapter {
 | Cost control | Budget caps (warn/pause) + delta reviews + per-stage cheap-model routing + native resume; rolling digests for resume-less providers |
 | Batch manifest trust | Schema-guided authoring with verdict-style parse-retry; deps auto-derived from file overlaps; `assemble plan validate` |
 | Naming layer | Hero names are agent-role keys + UX flavor only (roster: stark (architect), shuri (UI designer), strange (plan/design reviewer), vision (code reviewer), danvers (final reviewer), thor (implementer), hulk (refactorer), spidey (small batches), hawkeye (minor edits), cap (release), jarvis (memory); engine components: fury (orchestrator), pepper (ledger), heimdall (gates), ronin (ad-hoc), Damage Control (cleanup); human = World Security Council). Protocol constants (stage ids, verdicts, ledger fields) stay unthemed so tooling never depends on flavor |
+| Stage commands | Primary UX is dynamic top-level `assemble <stage-id>` generated from config (2 words, not 4); `assemble stage run <id>` kept as explicit long-form; reserved-word validation prevents collisions with built-ins, reserved list documented as may-grow |
 | Trademark | Tool/CLI/package/config/env branding renamed to `assemble` (trademark-safe for open-source distribution). MCU character names remain only as the default swappable display theme, with a non-affiliation disclaimer; not affiliated with Marvel or Disney |
