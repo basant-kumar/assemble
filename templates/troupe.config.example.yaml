@@ -1,0 +1,173 @@
+# ============================================================================
+# troupe.config.example.yaml — copy-paste catalog
+# ----------------------------------------------------------------------------
+# Everything here is OPTIONAL. Your real troupe.config.yaml only needs the
+# overrides you care about. Copy any block below into it and adjust.
+# Verify pricing ($/Mtok) against your provider's current rates — it only
+# feeds the cost ledger, never billing.
+# ============================================================================
+
+project:
+  name: MyApp
+  test: npm test
+  lint: npm run lint
+  typecheck: npm run typecheck
+
+# ---------------------------------------------------------------------------
+# PRESETS — pick one and stop reading, or go granular below.
+# ---------------------------------------------------------------------------
+mode: duo          # solo | duo | full
+
+# ---------------------------------------------------------------------------
+# PROVIDERS — how each CLI is launched. claude/codex are built in.
+# ---------------------------------------------------------------------------
+providers:
+  claude: { adapter: claude }
+  codex:  { adapter: codex }
+  gemini:
+    adapter: generic
+    command: 'gemini -m {model} -p {promptfile} --json'
+    resume: none                # engine uses token-capped rolling digests
+  opencode:
+    adapter: generic
+    command: 'opencode run --model {model} --prompt-file {promptfile}'
+    resume: 'flag:--session {sessionid}'
+  mistral:
+    adapter: generic
+    command: 'vibe -m {model} -f {promptfile} -o {outputfile}'
+    resume: none
+
+# ---------------------------------------------------------------------------
+# MODEL PROFILE CATALOG — copy what you need into `models:`.
+# All knobs optional; unsupported knobs on a provider warn + skip.
+# ---------------------------------------------------------------------------
+models:
+
+  # ---- Claude ----
+  fable-deep:                    # deep reasoning: plan, design, tricky reviews
+    provider: claude
+    model: fable
+    thinking: extended
+    effort: high
+    context_window: 200k
+    max_output: 32k
+    timeout: 20m
+    speed: quality
+    cost: { in: 15, out: 75 }
+
+  opus-writer:                   # strong general writer/implementer
+    provider: claude
+    model: opus-4.8
+    thinking: auto
+    context_window: 200k
+    timeout: 15m
+    cost: { in: 15, out: 75 }
+
+  sonnet-worker:                 # workhorse for implement batches
+    provider: claude
+    model: sonnet-4.5
+    thinking: auto
+    context_window: 200k
+    timeout: 10m
+    speed: balanced
+    cost: { in: 3, out: 15 }
+
+  haiku-fast:                    # cheap: delta reviews, memory-sync, triage
+    provider: claude
+    model: haiku-4.5
+    thinking: off
+    context_window: 200k
+    timeout: 5m
+    speed: fast
+    cost: { in: 1, out: 5 }
+
+  # ---- Codex ----
+  sol-reviewer:                  # cross-provider heavyweight reviewer
+    provider: codex
+    model: gpt-5.6-sol
+    effort: xhigh
+    context_window: 400k
+    timeout: 20m
+    cost: { in: 1.25, out: 10 }
+
+  luna-worker:                   # fast implementer for parallel batches
+    provider: codex
+    model: gpt-5.6-luna
+    effort: medium
+    context_window: 400k
+    timeout: 10m
+    cost: { in: 0.6, out: 4 }
+
+  codex-mini:                    # very cheap: lint-grade delta reviews
+    provider: codex
+    model: gpt-5-codex-mini
+    effort: low
+    timeout: 5m
+    cost: { in: 0.25, out: 1 }
+
+  # ---- Gemini ----
+  gemini-pro:                    # alternative reviewer, huge context
+    provider: gemini
+    model: gemini-3-pro
+    context_window: 1m
+    timeout: 15m
+    cost: { in: 2, out: 12 }
+
+  gemini-flash:                  # cheap second-opinion reviews
+    provider: gemini
+    model: gemini-3-flash
+    timeout: 5m
+    speed: fast
+    cost: { in: 0.3, out: 1.2 }
+
+  # ---- OpenCode / Mistral (bring-your-own model id) ----
+  opencode-default:
+    provider: opencode
+    model: your-model-id
+    timeout: 10m
+
+  vibe-default:
+    provider: mistral
+    model: mistral-vibe-large
+    timeout: 10m
+
+# ---------------------------------------------------------------------------
+# AGENT ROLES — bind roles to profiles. Edit ONE line here to change every
+# stage that uses the role.
+# ---------------------------------------------------------------------------
+agents:
+  writer:   { profile: fable-deep }
+  reviewer: { profile: sol-reviewer }
+  worker:   { profile: sonnet-worker }
+
+# ---------------------------------------------------------------------------
+# STAGES — any stage can use a role, a profile, or an inline binding.
+# ---------------------------------------------------------------------------
+stages:
+  plan:          { agent: writer, interactive: true }
+  plan-review:   { agent: reviewer, max_rounds: 3 }
+  design:        { agent: writer, flavor: technical }   # technical | ui | both
+  design-review: { agent: reviewer, max_rounds: 3, enabled: true }
+  implement:     { agent: worker, parallel: 2 }
+  code-review:   { agent: reviewer, max_rounds: 3 }
+  # Example inline pin — cheap model for just this stage:
+  # code-review: { provider: codex, model: gpt-5-codex-mini, max_rounds: 3 }
+  release:       { agent: writer, approval: human }
+  memory-sync:   { profile: haiku-fast }
+
+gates:
+  implement: [plan-review: APPROVED, design-review: APPROVED]
+  release:   [code-review: APPROVED, tests: PASS]
+
+memory:
+  file: docs/troupe/ARCHI.md
+  max_tokens: 8k
+
+budget:
+  per_run: 25                    # $; warn at 80%
+  action: pause                  # warn | pause
+
+# ---------------------------------------------------------------------------
+# One-off overrides without editing config:
+#   TROUPE_STAGE_code-review_MODEL=gemini-flash troupe stage run code-review
+# ---------------------------------------------------------------------------
