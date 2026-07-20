@@ -1,4 +1,4 @@
-import type { AssembleConfig } from "./config.js";
+import type { AssembleConfig, StageDef } from "./config.js";
 import { parseDurationMs } from "./config.js";
 import { appendEvent, readLedger, deriveStageStatus, isStageSatisfied } from "./ledger.js";
 import { getAdapter, type Adapter, type RunOpts } from "./adapters.js";
@@ -16,6 +16,42 @@ export class GateError extends Error {}
 export function withSkills(skills: string[] | undefined, prompt: string): string {
   if (!skills || skills.length === 0) return prompt;
   return `Active skills: ${skills.join(", ")}.\n\n${prompt}`;
+}
+
+/**
+ * Classify a display role into the review specialty it covers, for `flavor`
+ * routing. A "ui"/"design" role reviews interface changes; a "code"/"technical"
+ * role reviews implementation. Returns null for neutral roles (architect, final
+ * reviewer, implementer …) that carry no specialty.
+ */
+export function agentSpecialty(role: string): "technical" | "ui" | null {
+  if (/\b(ui|ux|design(?:er)?|visual|front-?end)\b/i.test(role)) return "ui";
+  if (/\b(code|technical|back-?end|api|security|architecture)\b/i.test(role)) return "technical";
+  return null;
+}
+
+/**
+ * Resolve which agent actually runs a stage, honouring its `flavor` routing
+ * hint. When a stage declares `flavor: technical|ui`, the engine auto-selects
+ * the roster's matching reviewer instead of the configured agent — unless that
+ * agent already matches (an author pin) or no matching reviewer exists. A
+ * `flavor: both` (or unset) stage always runs its configured agent verbatim;
+ * "both" fans out to per-flavor stages, it is not a single auto-swap.
+ */
+export function resolveStageAgent(config: AssembleConfig, stage: StageDef): { name: string; auto: boolean } {
+  const configured = stage.agent;
+  const flavor = stage.flavor;
+  if (!flavor || flavor === "both") return { name: configured, auto: false };
+
+  const current = config.agents[configured];
+  // Author already pinned a correctly-specialised reviewer — leave it be.
+  if (current && agentSpecialty(current.role) === flavor) return { name: configured, auto: false };
+
+  const match = Object.entries(config.agents).find(([, a]) => agentSpecialty(a.role) === flavor);
+  if (match) return { name: match[0], auto: true };
+
+  // No reviewer of the requested flavor in the roster: fall back to configured.
+  return { name: configured, auto: false };
 }
 
 /**
@@ -61,7 +97,12 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
       throw new GateError(`stage '${stageId}' is blocked: earlier stage '${earlier.id}' is ${status} (must be approved or skipped first)`);
   }
 
-  const agent = config.agents[stage.agent];
+  const resolved = resolveStageAgent(config, stage);
+  const agentName = resolved.name;
+  const agent = config.agents[agentName];
+  if (!agent) throw new GateError(`stage '${stageId}' references unknown agent '${agentName}'`);
+  if (resolved.auto)
+    log(`  ↳ flavor:${stage.flavor} → auto-selected ${renderAgent(agentName, config)} (${agent.role})`);
   const adapter = opts.adapters?.[agent.provider] ?? getAdapter(agent.provider);
   const model = stage.modelOverride ?? agent.model;
   const prompt = withSkills(agent.skills, stage.prompt);
@@ -73,17 +114,17 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
   if (agent.provider === "codex" && agent.effort) runOpts.effort = agent.effort;
   if (agent.timeout) runOpts.timeoutMs = parseDurationMs(agent.timeout);
 
-  appendEvent(dir, { type: "stage_started", stage: stage.id, agent: stage.agent });
-  log(`▶ ${stage.id} — ${renderAgent(stage.agent, config)} on ${model}`);
+  appendEvent(dir, { type: "stage_started", stage: stage.id, agent: agentName });
+  log(`▶ ${stage.id} — ${renderAgent(agentName, config)} on ${model}`);
   try {
     const result = await adapter.run(runOpts);
-    appendEvent(dir, { type: "stage_completed", stage: stage.id, agent: stage.agent, tokensIn: result.tokensIn, tokensOut: result.tokensOut });
+    appendEvent(dir, { type: "stage_completed", stage: stage.id, agent: agentName, tokensIn: result.tokensIn, tokensOut: result.tokensOut });
     appendEvent(dir, {
-      type: "cost", stage: stage.id, worker: stage.agent, model,
+      type: "cost", stage: stage.id, worker: agentName, model,
       tokensIn: result.tokensIn, tokensOut: result.tokensOut,
       costUsd: computeCost(config, model, result.tokensIn, result.tokensOut),
     });
-    log(`✔ ${stage.id} — ${renderAgent(stage.agent, config)} done`);
+    log(`✔ ${stage.id} — ${renderAgent(agentName, config)} done`);
     if (opts.autoCommit && config.utilityModel) {
       const commit = await commitStageChanges(dir, config, stage.id, {
         adapter: opts.autoCommit.adapter, gitBin: opts.autoCommit.gitBin, diffSummary: result.output,
@@ -96,7 +137,7 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
       log(`◆ ${stage.id} — committed: ${commit.message}`);
     }
   } catch (err) {
-    appendEvent(dir, { type: "stage_failed", stage: stage.id, agent: stage.agent, notes: String(err) });
+    appendEvent(dir, { type: "stage_failed", stage: stage.id, agent: agentName, notes: String(err) });
     throw err;
   }
 }

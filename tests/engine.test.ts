@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runStage, GateError } from "../src/engine.js";
+import { runStage, GateError, agentSpecialty, resolveStageAgent } from "../src/engine.js";
 import { loadConfig } from "../src/config.js";
 import { appendEvent, readLedger } from "../src/ledger.js";
 import type { Adapter } from "../src/adapters.js";
@@ -100,5 +100,89 @@ describe("runStage", () => {
     const utilityAdapter: Adapter = { name: "fake", async run({ model }) { calls.push(model); return { output: "x", tokensIn: 0, tokensOut: 0 }; } };
     await runStage(dir, config, "implement", { adapters: { fake: okAdapter() }, autoCommit: { adapter: utilityAdapter, gitBin: "true" } });
     expect(calls).toEqual([]);
+  });
+});
+
+const FLAVOR_YAML = `
+project: MyApp
+agents:
+  thor: { role: implementer, provider: fake, model: opus }
+  vision: { role: code reviewer, provider: fake, model: gpt-5-codex }
+  shuri: { role: UI designer, provider: fake, model: sonnet }
+stages:
+  - { id: implement, agent: thor, gate: human, prompt: "Implement." }
+  - { id: review, agent: thor, gate: auto, prompt: "Review.", flavor: ui }
+`;
+function flavorProject(yaml = FLAVOR_YAML) {
+  const dir = mkdtempSync(join(tmpdir(), "asm-flavor-"));
+  writeFileSync(join(dir, "assemble.config.yaml"), yaml);
+  return { dir, config: loadConfig(dir) };
+}
+
+describe("agentSpecialty", () => {
+  it("classifies ui/design roles as ui", () => {
+    expect(agentSpecialty("UI designer")).toBe("ui");
+    expect(agentSpecialty("plan/design reviewer")).toBe("ui");
+    expect(agentSpecialty("frontend reviewer")).toBe("ui");
+  });
+  it("classifies code/technical roles as technical", () => {
+    expect(agentSpecialty("code reviewer")).toBe("technical");
+    expect(agentSpecialty("technical reviewer")).toBe("technical");
+    expect(agentSpecialty("security auditor")).toBe("technical");
+  });
+  it("returns null for neutral roles", () => {
+    expect(agentSpecialty("implementer")).toBeNull();
+    expect(agentSpecialty("final reviewer")).toBeNull();
+    expect(agentSpecialty("architect")).toBeNull();
+  });
+});
+
+describe("resolveStageAgent", () => {
+  const cfg = () => loadConfigFrom(FLAVOR_YAML);
+  function loadConfigFrom(yaml: string) {
+    const dir = mkdtempSync(join(tmpdir(), "asm-r-"));
+    writeFileSync(join(dir, "assemble.config.yaml"), yaml);
+    return loadConfig(dir);
+  }
+  it("auto-selects the ui reviewer for a flavor:ui stage", () => {
+    const config = cfg();
+    const stage = config.stages.find(s => s.id === "review")!;
+    expect(resolveStageAgent(config, stage)).toEqual({ name: "shuri", auto: true });
+  });
+  it("auto-selects the technical reviewer for a flavor:technical stage", () => {
+    const config = loadConfigFrom(FLAVOR_YAML.replace("flavor: ui", "flavor: technical"));
+    const stage = config.stages.find(s => s.id === "review")!;
+    expect(resolveStageAgent(config, stage)).toEqual({ name: "vision", auto: true });
+  });
+  it("honours an author-pinned matching agent without an auto-swap", () => {
+    const config = loadConfigFrom(FLAVOR_YAML.replace("agent: thor, gate: auto, prompt: \"Review.\", flavor: ui", "agent: shuri, gate: auto, prompt: \"Review.\", flavor: ui"));
+    const stage = config.stages.find(s => s.id === "review")!;
+    expect(resolveStageAgent(config, stage)).toEqual({ name: "shuri", auto: false });
+  });
+  it("leaves the configured agent when flavor is unset or 'both'", () => {
+    const both = loadConfigFrom(FLAVOR_YAML.replace("flavor: ui", "flavor: both"));
+    const bstage = both.stages.find(s => s.id === "review")!;
+    expect(resolveStageAgent(both, bstage)).toEqual({ name: "thor", auto: false });
+    const none = loadConfigFrom(FLAVOR_YAML.replace(", flavor: ui", ""));
+    const nstage = none.stages.find(s => s.id === "review")!;
+    expect(resolveStageAgent(none, nstage)).toEqual({ name: "thor", auto: false });
+  });
+  it("falls back to the configured agent when no reviewer of that flavor exists", () => {
+    const config = loadConfigFrom(FLAVOR_YAML.replace(/  shuri:.*\n/, ""));
+    const stage = config.stages.find(s => s.id === "review")!;
+    expect(resolveStageAgent(config, stage)).toEqual({ name: "thor", auto: false });
+  });
+});
+
+describe("runStage flavor routing", () => {
+  it("runs the auto-selected reviewer and ledgers it as the stage agent", async () => {
+    const { dir, config } = flavorProject();
+    await runStage(dir, config, "implement", { adapters: { fake: okAdapter() } });
+    appendEvent(dir, { type: "gate_approved", stage: "implement", approvedBy: "council" });
+    const calls: string[] = [];
+    await runStage(dir, config, "review", { adapters: { fake: okAdapter(calls) } });
+    expect(calls).toEqual(["sonnet"]); // shuri's model, not thor's opus
+    const completed = readLedger(dir).filter(e => e.type === "stage_completed" && e.stage === "review")[0];
+    expect(completed.agent).toBe("shuri");
   });
 });
