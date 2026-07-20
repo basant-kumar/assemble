@@ -12,6 +12,7 @@ import type { StageStatus } from "./protocol.js";
 import { getAdapter } from "./adapters.js";
 import { resolveSideOpModel } from "./sideops.js";
 import type { RunStageOpts } from "./engine.js";
+import { aggregateCost } from "./cost.js";
 
 const ICONS: Record<StageStatus, string> = {
   approved: "✔", awaiting_gate: "⏸", failed: "✖", needs_rework: "✖", running: "▶", pending: "·",
@@ -40,6 +41,15 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
   });
 
   program.command("status").description("pipeline status — who's working").action(() => printStatus(requireConfig()));
+
+  program.command("cost").description("aggregate token cost by worker and stage").action(() => {
+    const summary = aggregateCost(readLedger(dir));
+    for (const [worker, usd] of Object.entries(summary.byWorker))
+      io.out(`worker  ${worker.padEnd(14)} $${usd.toFixed(4)}`);
+    for (const [stage, usd] of Object.entries(summary.byStage))
+      io.out(`stage   ${stage.padEnd(14)} $${usd.toFixed(4)}`);
+    io.out(`total   ${"".padEnd(14)} $${summary.total.toFixed(4)}`);
+  });
 
   program.command("run").description("run the full pipeline serially")
     .option("--auto-commit", "draft a utility-model commit message and commit each stage's changes")

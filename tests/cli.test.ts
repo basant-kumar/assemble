@@ -48,6 +48,17 @@ describe("buildProgram", () => {
     await buildProgram(dir, io).parseAsync(["node", "assemble", "gate", "approve", "implement"]);
     expect(lines.join("\n")).toMatch(/implement.*approved/);
   });
+  it("cost aggregates ledgered cost events by worker, stage, and total", async () => {
+    const dir = project();
+    appendEvent(dir, { type: "cost", stage: "implement", worker: "thor", model: "opus", tokensIn: 100, tokensOut: 50, costUsd: 0.01 });
+    appendEvent(dir, { type: "cost", stage: "implement", worker: "utility", model: "haiku", tokensIn: 20, tokensOut: 10, costUsd: 0.0005 });
+    const { lines, io } = capture();
+    await buildProgram(dir, io).parseAsync(["node", "assemble", "cost"]);
+    const out = lines.join("\n");
+    expect(out).toMatch(/thor.*\$0\.0100/);
+    expect(out).toMatch(/utility.*\$0\.0005/);
+    expect(out).toMatch(/total.*\$0\.0105/);
+  });
   it("run --auto-commit requires utilityModel to be configured first", async () => {
     const dir = project();
     const { io } = capture();
