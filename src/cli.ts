@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 import { loadConfig, ConfigError, type AssembleConfig } from "./config.js";
 import { readLedger, deriveStageStatus } from "./ledger.js";
 import { renderAgent } from "./theme.js";
@@ -144,7 +145,22 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
   return program;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+function isMainModule(): boolean {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  const self = fileURLToPath(import.meta.url);
+  if (self === argv1) return true;
+  // When invoked via a bin symlink (e.g. `npm link`), process.argv[1] is the
+  // symlink path while import.meta.url resolves to the real file. Compare the
+  // resolved real paths so the CLI still runs.
+  try {
+    return realpathSync(argv1) === self;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   buildProgram(process.cwd()).parseAsync(process.argv).catch((err) => {
     console.error(String(err instanceof Error ? err.message : err));
     process.exit(1);
