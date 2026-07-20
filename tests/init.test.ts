@@ -1,0 +1,22 @@
+import { describe, it, expect } from "vitest";
+import { mkdtempSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { initProject } from "../src/init.js";
+import { loadConfig, ConfigError } from "../src/config.js";
+
+describe("initProject", () => {
+  it("writes a loadable default config and state dir", () => {
+    const dir = mkdtempSync(join(tmpdir(), "asm-"));
+    initProject(dir);
+    expect(existsSync(join(dir, ".assemble"))).toBe(true);
+    const cfg = loadConfig(dir); // must validate against our own schema
+    expect(cfg.stages.length).toBeGreaterThanOrEqual(2);
+    expect(cfg.agents.thor.role).toBe("implementer");
+  });
+  it("refuses to overwrite an existing config", () => {
+    const dir = mkdtempSync(join(tmpdir(), "asm-"));
+    initProject(dir);
+    expect(() => initProject(dir)).toThrow(ConfigError);
+  });
+});
