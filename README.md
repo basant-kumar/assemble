@@ -154,6 +154,42 @@ $/Mtok pricing for pepper (ledger)'s books. Presets:
 | `duo`  | stark (architect) writes, strange (plan/design reviewer) reviews cross-provider (TRIP's proven setup) |
 | `full` | the whole roster, each hero tuned separately |
 
+## Budget caps
+
+Give pepper (ledger) a spending limit. Drop a `budget:` block into
+`assemble.config.yaml` — every cap is optional and scoped to a single run's
+ledger (the `$9.40 / $25` on the board above is a `total` cap):
+
+```yaml
+budget:
+  policy: pause          # warn | pause | block
+  total: 25.00           # $ ceiling across the whole run
+  perStage:
+    implement: 15.00     # $ cap for one stage
+  perWorker:
+    thor: 10.00          # $ cap for one worker
+```
+
+A scope breaches only when spend is **strictly over** its cap. On a breach the
+`policy` decides what happens after the running stage records its cost:
+
+| `policy:` | on breach |
+|---|---|
+| `warn`  | log the overspend, keep going |
+| `pause` | freeze at a human gate (the World Security Council) — approve the overspend to continue, or stop |
+| `block` | halt the run, writing a `budget_abort` event to the ledger |
+
+Enforcement is pure and deterministic — decisions replay from the ledger with
+no model calls, so `block` and `pause` outcomes are reproducible. Leave
+`budget:` out and behavior is unchanged.
+
+Check headroom any time:
+
+```bash
+assemble budget    # per-scope spent vs cap, with remaining headroom
+assemble cost      # gains a remaining column when a budget is set
+```
+
 ## Design docs
 
 Full architecture & decisions: [`docs/superpowers/specs/2026-07-20-assemble-orchestrator-design.md`](docs/superpowers/specs/2026-07-20-assemble-orchestrator-design.md)

@@ -186,8 +186,12 @@ memory:                                                # 🧠 jarvis (memory)
   max_tokens: 8k
 
 budget:                                                # 💼 pepper (ledger) — the card
-  per_run: 25                    # $; warn at 80%
-  action: pause                  # warn | pause — pause = card frozen
+  policy: pause                  # warn | pause | block — pause = card frozen at a human gate
+  total: 25.00                   # $ ceiling across the whole run
+  perStage:                      # optional $ caps for individual stages
+    implement: 15.00
+  perWorker:                     # optional $ caps for individual workers
+    thor: 10.00
 
 # ---------------------------------------------------------------------------
 # One-off overrides without editing config:
