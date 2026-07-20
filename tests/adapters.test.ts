@@ -25,14 +25,35 @@ describe("claudeAdapter", () => {
     await expect(claudeAdapter(bin).run({ prompt: "hi", model: "opus", cwd: process.cwd() }))
       .rejects.toThrow(/boom/);
   });
+  it("normalizes a missing usage block to zero tokens instead of throwing", async () => {
+    const bin = fakeBin(`echo '{"result":"no usage field"}'`);
+    const r = await claudeAdapter(bin).run({ prompt: "hi", model: "opus", cwd: process.cwd() });
+    expect(r.tokensIn).toBe(0);
+    expect(r.tokensOut).toBe(0);
+  });
 });
 
 describe("codexAdapter", () => {
-  it("returns plain text with zero token counts", async () => {
-    const bin = fakeBin(`echo "plain output"`);
+  it("parses real token counts from the --json NDJSON event stream", async () => {
+    const bin = fakeBin(
+      `printf '%s\\n' '{"type":"message","text":"plain output"}' '{"type":"token_count","input_tokens":9,"output_tokens":6}'`
+    );
     const r = await codexAdapter(bin).run({ prompt: "hi", model: "gpt-5-codex", cwd: process.cwd() });
-    expect(r.output.trim()).toBe("plain output");
-    expect(r.tokensIn).toBe(0);
+    expect(r.output).toBe("plain output");
+    expect(r.tokensIn).toBe(9);
+    expect(r.tokensOut).toBe(6);
+  });
+  it("accumulates text across multiple message events", async () => {
+    const bin = fakeBin(
+      `printf '%s\\n' '{"type":"message","text":"part one "}' '{"type":"message","text":"part two"}' '{"type":"token_count","input_tokens":2,"output_tokens":3}'`
+    );
+    const r = await codexAdapter(bin).run({ prompt: "hi", model: "gpt-5-codex", cwd: process.cwd() });
+    expect(r.output).toBe("part one part two");
+  });
+  it("throws AdapterError on an unparsable event line", async () => {
+    const bin = fakeBin(`echo 'not json'`);
+    await expect(codexAdapter(bin).run({ prompt: "hi", model: "gpt-5-codex", cwd: process.cwd() }))
+      .rejects.toThrow(AdapterError);
   });
 });
 

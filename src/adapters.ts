@@ -31,12 +31,28 @@ export function claudeAdapter(bin = "claude"): Adapter {
   };
 }
 
+type CodexEvent = { type?: string; text?: string; input_tokens?: number; output_tokens?: number };
+
 export function codexAdapter(bin = "codex"): Adapter {
   return {
     name: "codex",
     async run({ prompt, model, cwd }) {
-      const stdout = await spawn(bin, ["exec", "--model", model, prompt], cwd);
-      return { output: stdout, tokensIn: 0, tokensOut: 0 };
+      const stdout = await spawn(bin, ["exec", "--json", "--model", model, prompt], cwd);
+      const lines = stdout.trim().split("\n").filter(Boolean);
+      let output = "";
+      let tokensIn = 0;
+      let tokensOut = 0;
+      for (const line of lines) {
+        let event: CodexEvent;
+        try { event = JSON.parse(line); }
+        catch { throw new AdapterError(`codex returned a non-JSON event line: ${line.slice(0, 200)}`); }
+        if (event.type === "message" && typeof event.text === "string") output += event.text;
+        if (event.type === "token_count") {
+          tokensIn = Number(event.input_tokens ?? tokensIn);
+          tokensOut = Number(event.output_tokens ?? tokensOut);
+        }
+      }
+      return { output, tokensIn, tokensOut };
     },
   };
 }
