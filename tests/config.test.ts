@@ -72,4 +72,13 @@ describe("loadConfig", () => {
   it("rejects malformed ASSEMBLE_PRICING_JSON", () => {
     expect(() => loadConfig(writeCfg(VALID), { "ASSEMBLE_PRICING_JSON": "{not json" })).toThrow(ConfigError);
   });
+  it("utilityModel is undefined by default", () => {
+    const cfg = loadConfig(writeCfg(VALID));
+    expect(cfg.utilityModel).toBeUndefined();
+  });
+  it("parses a configured utilityModel", () => {
+    const withUtility = VALID + `utilityModel: haiku\n`;
+    const cfg = loadConfig(writeCfg(withUtility));
+    expect(cfg.utilityModel).toBe("haiku");
+  });
 });

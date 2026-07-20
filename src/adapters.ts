@@ -5,7 +5,7 @@ export type RunResult = { output: string; tokensIn: number; tokensOut: number };
 export interface Adapter { readonly name: string; run(opts: RunOpts): Promise<RunResult> }
 export class AdapterError extends Error {}
 
-function spawn(bin: string, args: string[], cwd: string): Promise<string> {
+export function spawn(bin: string, args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(bin, args, { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) reject(new AdapterError(`${bin} failed: ${stderr || err.message}`));

@@ -48,4 +48,10 @@ describe("buildProgram", () => {
     await buildProgram(dir, io).parseAsync(["node", "assemble", "gate", "approve", "implement"]);
     expect(lines.join("\n")).toMatch(/implement.*approved/);
   });
+  it("run --auto-commit requires utilityModel to be configured first", async () => {
+    const dir = project();
+    const { io } = capture();
+    await expect(buildProgram(dir, io).parseAsync(["node", "assemble", "run", "--auto-commit"]))
+      .rejects.toThrow(/utilityModel/);
+  });
 });
