@@ -71,6 +71,21 @@ const BudgetSchema = z.object({
   perStage: z.record(z.number().nonnegative()).default({}),
   perWorker: z.record(z.number().nonnegative()).default({}),
 });
+/** Default location of the architectural-memory file, relative to the repo
+ * root. Overridable via `memory.path` in assemble.config.yaml. */
+export const DEFAULT_ARCHI_PATH = "docs/assemble/ARCHI.md";
+const MemorySchema = z.object({
+  // Opt-in, default off. The architectural-memory feature (ARCHI.md +
+  // `memory-sync`) is designed for single-source-of-truth projects, where the
+  // local ledger's last-synced SHA is a reliable base to diff from. Leave it
+  // off for repos with remote contributors, where a locally-synced ARCHI.md
+  // would silently go stale. Flip to `true` to enable.
+  enabled: z.boolean().default(false),
+  path: z.string().min(1).default(DEFAULT_ARCHI_PATH),
+  // Which agent runs `memory-sync`. When omitted, the agent whose role mentions
+  // "memory" is used (see resolveMemoryAgent).
+  agent: z.string().min(1).optional(),
+}).default({ enabled: false, path: DEFAULT_ARCHI_PATH });
 const ConfigSchema = z.object({
   project: z.string().min(1),
   agents: z.record(AgentSchema),
@@ -78,12 +93,14 @@ const ConfigSchema = z.object({
   pricing: z.record(PricingEntrySchema).default({}),
   utilityModel: z.string().min(1).optional(),
   budget: BudgetSchema.optional(),
+  memory: MemorySchema,
 });
 
 export type AgentDef = z.infer<typeof AgentSchema>;
 export type StageDef = z.infer<typeof StageSchema>;
 export type PricingEntry = z.infer<typeof PricingEntrySchema>;
 export type Budget = z.infer<typeof BudgetSchema>;
+export type MemoryConfig = z.infer<typeof MemorySchema>;
 export type AssembleConfig = z.infer<typeof ConfigSchema>;
 
 export function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): AssembleConfig {

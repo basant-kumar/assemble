@@ -15,6 +15,7 @@ import { resolveSideOpModel } from "./sideops.js";
 import type { RunStageOpts } from "./engine.js";
 import { aggregateCost } from "./cost.js";
 import { budgetReport } from "./budget.js";
+import { syncMemory } from "./memory.js";
 import { runConfigureWizard, type WizardIO } from "./configure.js";
 import { select, input } from "@inquirer/prompts";
 
@@ -93,6 +94,23 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
       const r = await runPipeline(dir, cfg, runOpts);
       if (r.stoppedAt) io.out(`stopped at '${r.stoppedAt}' — resolve with: assemble gate approve ${r.stoppedAt}`);
       printStatus(cfg);
+    });
+
+  program.command("memory-sync")
+    .description("refresh architectural memory (ARCHI.md) from the release diff")
+    .option("--since <ref>", "git ref to diff against (default: last sync's sha)")
+    .action(async (opts: { since?: string }) => {
+      const cfg = requireConfig();
+      if (!cfg.memory.enabled) {
+        io.out(
+          "memory-sync is disabled. Architectural memory is opt-in and best for " +
+          "single-source-of-truth projects.\nEnable it by setting `memory.enabled: true` " +
+          "in assemble.config.yaml.",
+        );
+        return;
+      }
+      const r = await syncMemory(dir, cfg, { since: opts.since, log: io.out });
+      if (!r.updated && !r.created) io.out(`memory-sync — ${r.path} already up to date`);
     });
 
   const gate = program.command("gate").description("human (World Security Council) gate decisions");

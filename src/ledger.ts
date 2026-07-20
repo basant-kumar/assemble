@@ -5,7 +5,7 @@ import type { StageDef } from "./config.js";
 
 export type LedgerEvent = {
   ts: string;
-  type: "stage_started" | "stage_completed" | "stage_failed" | "gate_approved" | "gate_rejected" | "stage_skipped" | "cost" | "budget_abort";
+  type: "stage_started" | "stage_completed" | "stage_failed" | "gate_approved" | "gate_rejected" | "stage_skipped" | "cost" | "budget_abort" | "memory_synced";
   stage: string;
   agent?: string;
   worker?: string;
@@ -16,6 +16,8 @@ export type LedgerEvent = {
   costUsd?: number;
   approvedBy?: string;
   notes?: string;
+  /** For `memory_synced`: HEAD sha the sync was taken against (base for next diff). */
+  sha?: string;
 };
 
 const ledgerPath = (dir: string) => join(dir, ".assemble", "ledger.ndjson");

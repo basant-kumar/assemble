@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import { ConfigError, loadConfig, THINKING_LEVELS, EFFORT_LEVELS } from "./config.js";
+import { ConfigError, loadConfig, THINKING_LEVELS, EFFORT_LEVELS, DEFAULT_ARCHI_PATH } from "./config.js";
 
 export type Choice<T> = { name: string; value: T; description?: string };
 
@@ -113,6 +113,9 @@ export function defaultRosterDoc(project: string): Record<string, unknown> {
     ],
     pricing,
     utilityModel: "haiku",
+    // Opt-in: architectural memory (ARCHI.md + `memory-sync`) is off by default.
+    // Best for single-source-of-truth projects; flip `enabled` to true to use it.
+    memory: { enabled: false, path: DEFAULT_ARCHI_PATH, agent: "jarvis" },
   };
 }
 
