@@ -18,14 +18,21 @@ const StageSchema = z.object({
   prompt: z.string().min(1),
   modelOverride: z.string().optional(),
 });
+const PricingEntrySchema = z.object({
+  input: z.number().nonnegative(),
+  output: z.number().nonnegative(),
+});
 const ConfigSchema = z.object({
   project: z.string().min(1),
   agents: z.record(AgentSchema),
   stages: z.array(StageSchema).min(1),
+  pricing: z.record(PricingEntrySchema).default({}),
+  utilityModel: z.string().min(1).optional(),
 });
 
 export type AgentDef = z.infer<typeof AgentSchema>;
 export type StageDef = z.infer<typeof StageSchema>;
+export type PricingEntry = z.infer<typeof PricingEntrySchema>;
 export type AssembleConfig = z.infer<typeof ConfigSchema>;
 
 export function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): AssembleConfig {
@@ -50,5 +57,17 @@ export function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): A
     const override = env[`ASSEMBLE_STAGE_${s.id}_MODEL`];
     if (override) s.modelOverride = override;
   }
+
+  const pricingOverride = env["ASSEMBLE_PRICING_JSON"];
+  if (pricingOverride) {
+    let rawPricing: unknown;
+    try { rawPricing = JSON.parse(pricingOverride); }
+    catch { throw new ConfigError(`ASSEMBLE_PRICING_JSON is not valid JSON`); }
+    const validated = z.record(PricingEntrySchema).safeParse(rawPricing);
+    if (!validated.success)
+      throw new ConfigError(`ASSEMBLE_PRICING_JSON: ${validated.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+    cfg.pricing = { ...cfg.pricing, ...validated.data };
+  }
+
   return cfg;
 }

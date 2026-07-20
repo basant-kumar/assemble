@@ -19,4 +19,11 @@ describe("initProject", () => {
     initProject(dir);
     expect(() => initProject(dir)).toThrow(ConfigError);
   });
+  it("scaffolds an example pricing table for the default agents' models", () => {
+    const dir = mkdtempSync(join(tmpdir(), "asm-"));
+    initProject(dir);
+    const cfg = loadConfig(dir);
+    expect(cfg.pricing.opus).toBeDefined();
+    expect(cfg.pricing["gpt-5-codex"]).toBeDefined();
+  });
 });

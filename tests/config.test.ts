@@ -49,4 +49,27 @@ describe("loadConfig", () => {
     expect(cfg.agents[stage.agent].model).toBe("gpt-5-codex"); // base agent untouched
     expect((stage as any).modelOverride).toBe("gemini-flash");
   });
+  it("defaults pricing to an empty map when omitted", () => {
+    const cfg = loadConfig(writeCfg(VALID));
+    expect(cfg.pricing).toEqual({});
+  });
+  it("parses a pricing table keyed by model", () => {
+    const withPricing = VALID + `pricing:\n  opus: { input: 0.000015, output: 0.000075 }\n`;
+    const cfg = loadConfig(writeCfg(withPricing));
+    expect(cfg.pricing.opus).toEqual({ input: 0.000015, output: 0.000075 });
+  });
+  it("rejects negative pricing rates", () => {
+    const bad = VALID + `pricing:\n  opus: { input: -1, output: 0 }\n`;
+    expect(() => loadConfig(writeCfg(bad))).toThrow(ConfigError);
+  });
+  it("merges ASSEMBLE_PRICING_JSON over file-configured pricing", () => {
+    const withPricing = VALID + `pricing:\n  opus: { input: 0.01, output: 0.02 }\n`;
+    const cfg = loadConfig(writeCfg(withPricing), {
+      "ASSEMBLE_PRICING_JSON": JSON.stringify({ opus: { input: 0.5, output: 0.6 } }),
+    });
+    expect(cfg.pricing.opus).toEqual({ input: 0.5, output: 0.6 });
+  });
+  it("rejects malformed ASSEMBLE_PRICING_JSON", () => {
+    expect(() => loadConfig(writeCfg(VALID), { "ASSEMBLE_PRICING_JSON": "{not json" })).toThrow(ConfigError);
+  });
 });
