@@ -27,6 +27,35 @@ export class BudgetError extends Error {
   }
 }
 
+export type BudgetLine = { scope: string; cap: number; spent: number; remaining: number };
+
+/**
+ * Build a per-scope spend/cap/remaining report from the ledger. Pure: no I/O.
+ * Returns an empty array when no budget is configured so callers can degrade
+ * gracefully. `remaining` may be negative when a cap has been exceeded.
+ */
+export function budgetReport(config: AssembleConfig, events: LedgerEvent[]): BudgetLine[] {
+  const budget = config.budget;
+  if (!budget) return [];
+
+  const { byWorker, byStage, total } = aggregateCost(events);
+  const lines: BudgetLine[] = [];
+
+  if (budget.total !== undefined) {
+    lines.push({ scope: "total", cap: budget.total, spent: total, remaining: budget.total - total });
+  }
+  for (const [stage, cap] of Object.entries(budget.perStage)) {
+    const spent = byStage[stage] ?? 0;
+    lines.push({ scope: `stage:${stage}`, cap, spent, remaining: cap - spent });
+  }
+  for (const [worker, cap] of Object.entries(budget.perWorker)) {
+    const spent = byWorker[worker] ?? 0;
+    lines.push({ scope: `worker:${worker}`, cap, spent, remaining: cap - spent });
+  }
+
+  return lines;
+}
+
 /**
  * Deterministically decide whether the ledger's spend has breached any
  * configured budget cap. Pure: no I/O, no model calls. A scope breaches only

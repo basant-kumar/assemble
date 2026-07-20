@@ -13,6 +13,7 @@ import { getAdapter } from "./adapters.js";
 import { resolveSideOpModel } from "./sideops.js";
 import type { RunStageOpts } from "./engine.js";
 import { aggregateCost } from "./cost.js";
+import { budgetReport } from "./budget.js";
 
 const ICONS: Record<StageStatus, string> = {
   approved: "✔", awaiting_gate: "⏸", failed: "✖", needs_rework: "✖", running: "▶", pending: "·",
@@ -44,11 +45,25 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
 
   program.command("cost").description("aggregate token cost by worker and stage").action(() => {
     const summary = aggregateCost(readLedger(dir));
+    const budget = config?.budget;
+    const rem = (cap: number | undefined, spent: number) =>
+      cap !== undefined ? `   remaining $${(cap - spent).toFixed(4)}` : "";
     for (const [worker, usd] of Object.entries(summary.byWorker))
-      io.out(`worker  ${worker.padEnd(14)} $${usd.toFixed(4)}`);
+      io.out(`worker  ${worker.padEnd(14)} $${usd.toFixed(4)}${rem(budget?.perWorker[worker], usd)}`);
     for (const [stage, usd] of Object.entries(summary.byStage))
-      io.out(`stage   ${stage.padEnd(14)} $${usd.toFixed(4)}`);
-    io.out(`total   ${"".padEnd(14)} $${summary.total.toFixed(4)}`);
+      io.out(`stage   ${stage.padEnd(14)} $${usd.toFixed(4)}${rem(budget?.perStage[stage], usd)}`);
+    io.out(`total   ${"".padEnd(14)} $${summary.total.toFixed(4)}${rem(budget?.total, summary.total)}`);
+  });
+
+  program.command("budget").description("per-scope spend vs configured caps, with remaining headroom").action(() => {
+    const cfg = requireConfig();
+    const lines = budgetReport(cfg, readLedger(dir));
+    if (lines.length === 0) {
+      io.out("no budget configured — add a `budget:` block to assemble.config.yaml");
+      return;
+    }
+    for (const l of lines)
+      io.out(`${l.scope.padEnd(20)} spent $${l.spent.toFixed(4)}   cap $${l.cap.toFixed(4)}   remaining $${l.remaining.toFixed(4)}`);
   });
 
   program.command("run").description("run the full pipeline serially")
