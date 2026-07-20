@@ -9,6 +9,10 @@ import { runPipeline } from "./pipeline.js";
 import { approveGate, rejectGate } from "./gate.js";
 import { initProject } from "./init.js";
 import type { StageStatus } from "./protocol.js";
+import { getAdapter } from "./adapters.js";
+import { resolveSideOpModel } from "./sideops.js";
+import type { RunStageOpts } from "./engine.js";
+import { aggregateCost } from "./cost.js";
 
 const ICONS: Record<StageStatus, string> = {
   approved: "✔", awaiting_gate: "⏸", failed: "✖", needs_rework: "✖", running: "▶", pending: "·",
@@ -38,12 +42,28 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
 
   program.command("status").description("pipeline status — who's working").action(() => printStatus(requireConfig()));
 
-  program.command("run").description("run the full pipeline serially").action(async () => {
-    const cfg = requireConfig();
-    const r = await runPipeline(dir, cfg, { log: io.out });
-    if (r.stoppedAt) io.out(`stopped at '${r.stoppedAt}' — resolve with: assemble gate approve ${r.stoppedAt}`);
-    printStatus(cfg);
+  program.command("cost").description("aggregate token cost by worker and stage").action(() => {
+    const summary = aggregateCost(readLedger(dir));
+    for (const [worker, usd] of Object.entries(summary.byWorker))
+      io.out(`worker  ${worker.padEnd(14)} $${usd.toFixed(4)}`);
+    for (const [stage, usd] of Object.entries(summary.byStage))
+      io.out(`stage   ${stage.padEnd(14)} $${usd.toFixed(4)}`);
+    io.out(`total   ${"".padEnd(14)} $${summary.total.toFixed(4)}`);
   });
+
+  program.command("run").description("run the full pipeline serially")
+    .option("--auto-commit", "draft a utility-model commit message and commit each stage's changes")
+    .action(async (opts: { autoCommit?: boolean }) => {
+      const cfg = requireConfig();
+      const runOpts: RunStageOpts = { log: io.out };
+      if (opts.autoCommit) {
+        resolveSideOpModel(cfg); // fail fast if utilityModel isn't configured — before any stage runs
+        runOpts.autoCommit = { adapter: getAdapter("claude") };
+      }
+      const r = await runPipeline(dir, cfg, runOpts);
+      if (r.stoppedAt) io.out(`stopped at '${r.stoppedAt}' — resolve with: assemble gate approve ${r.stoppedAt}`);
+      printStatus(cfg);
+    });
 
   const gate = program.command("gate").description("human (World Security Council) gate decisions");
   gate.command("approve <stage>").action((stage: string) => {
