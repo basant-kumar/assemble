@@ -16,6 +16,15 @@ function scriptedIO(answers: string[]): WizardIO & { remaining: () => number } {
   let i = 0;
   return {
     select<T>(message: string, choices: Choice<T>[], def?: T): Promise<T> {
+      // The team-shape (mode) prompt is orthogonal to hero config: tests that
+      // don't exercise it may omit an answer and get the default. Only consume a
+      // scripted answer here if the next one is an actual mode value.
+      if (message.startsWith("Team shape")) {
+        const next = answers[i];
+        const hit = next !== undefined && choices.find(c => String(c.value) === next);
+        if (hit) { i++; return Promise.resolve(hit.value); }
+        return Promise.resolve(def as T);
+      }
       const a = answers[i++];
       if (a === undefined) throw new Error(`ran out of scripted answers at select: ${message}`);
       if (a === "" && def !== undefined) return Promise.resolve(def); // Enter = keep default
@@ -163,5 +172,85 @@ describe("runConfigureWizard", () => {
     expect(cfg.agents.thor.provider).toBe("codex");
     expect(cfg.agents.thor.model).toBe("gpt-5-codex-mini");
     expect(cfg.agents.thor.effort).toBe("low");
+  });
+
+  it("picking fable-5 pre-fills its Anthropic list price", async () => {
+    const dir = setup();
+    const io = scriptedIO([
+      "thor", "edit",
+      "claude",   // provider (thor already claude)
+      "fable-5",  // model — newly known
+      "", "",     // role, skills
+      "",         // thinking
+      "", "", "", // timeout, context_window, max_output
+      "",         // input $/Mtok (default should be 10, not opus' 15)
+      "",         // output $/Mtok (default should be 50)
+      "__done__",
+    ]);
+    await runConfigureWizard(dir, io);
+    const cfg = loadConfig(dir);
+    expect(cfg.agents.thor.model).toBe("fable-5");
+    expect(cfg.pricing["fable-5"].input).toBeCloseTo(10 / 1_000_000);
+    expect(cfg.pricing["fable-5"].output).toBeCloseTo(50 / 1_000_000);
+  });
+
+  it("picking gpt-5.6-sol pre-fills its OpenAI list price", async () => {
+    const dir = setup();
+    const io = scriptedIO([
+      "vision", "edit",
+      "codex",        // provider (vision already codex)
+      "gpt-5.6-sol",  // model — newly known
+      "", "",         // role, skills
+      "",             // effort
+      "", "", "",     // timeout, context_window, max_output
+      "",             // input $/Mtok (default 5)
+      "",             // output $/Mtok (default 30)
+      "__done__",
+    ]);
+    await runConfigureWizard(dir, io);
+    const cfg = loadConfig(dir);
+    expect(cfg.agents.vision.model).toBe("gpt-5.6-sol");
+    expect(cfg.pricing["gpt-5.6-sol"].input).toBeCloseTo(5 / 1_000_000);
+    expect(cfg.pricing["gpt-5.6-sol"].output).toBeCloseTo(30 / 1_000_000);
+  });
+
+  it("custom-model entry lets an unknown model through with hand-entered pricing", async () => {
+    const dir = setup();
+    const io = scriptedIO([
+      "thor", "edit",
+      "codex",              // provider
+      "__custom__",         // model -> custom escape hatch
+      "gpt-6-experimental", // custom model id
+      "refactorer", "",     // role, skills
+      "",                   // effort
+      "", "", "",           // timeout, context_window, max_output
+      "2",                  // input $/Mtok (no list price — hand-entered)
+      "12",                 // output $/Mtok
+      "__done__",
+    ]);
+    await runConfigureWizard(dir, io);
+    const cfg = loadConfig(dir);
+    expect(cfg.agents.thor.model).toBe("gpt-6-experimental");
+    expect(cfg.pricing["gpt-6-experimental"].input).toBeCloseTo(2 / 1_000_000);
+    expect(cfg.pricing["gpt-6-experimental"].output).toBeCloseTo(12 / 1_000_000);
+  });
+  it("writes the chosen mode and the loader expands it", async () => {
+    const dir = setup();
+    // Answer the team-shape prompt with 'duo', then save immediately.
+    const io = scriptedIO(["duo", "__done__"]);
+    await runConfigureWizard(dir, io);
+    const doc = parse(readFileSync(join(dir, "assemble.config.yaml"), "utf8"));
+    expect(doc.mode).toBe("duo");
+    const cfg = loadConfig(dir);
+    expect(cfg.stages.find(s => s.id === "implement")!.agent).toBe("writer");
+    expect(cfg.stages.find(s => s.id === "code-review")!.agent).toBe("reviewer");
+  });
+  it("selecting full mode omits the mode field (roster used as written)", async () => {
+    const dir = setup();
+    const io = scriptedIO(["full", "__done__"]);
+    await runConfigureWizard(dir, io);
+    const doc = parse(readFileSync(join(dir, "assemble.config.yaml"), "utf8"));
+    expect(doc.mode).toBeUndefined();
+    expect(loadConfig(dir).stages.find(s => s.id === "implement")!.agent).toBe("thor");
   });
 });

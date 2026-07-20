@@ -9,6 +9,10 @@ export class ConfigError extends Error {}
 // Provider-specific reasoning knobs, applied by the matching adapter.
 export const THINKING_LEVELS = ["off", "auto", "extended"] as const; // claude
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh"] as const; // codex
+// Preset team shapes. `mode: solo|duo|full` is a shorthand that the loader
+// expands into the agents block + stage wiring (see MODE_PRESETS / loadConfig).
+export const MODES = ["solo", "duo", "full"] as const;
+export type Mode = (typeof MODES)[number];
 export type Thinking = (typeof THINKING_LEVELS)[number];
 export type Effort = (typeof EFFORT_LEVELS)[number];
 
@@ -88,7 +92,12 @@ const MemorySchema = z.object({
 }).default({ enabled: false, path: DEFAULT_ARCHI_PATH });
 const ConfigSchema = z.object({
   project: z.string().min(1),
-  agents: z.record(AgentSchema),
+  // Preset shorthand. When set to solo/duo, the loader seeds the agents block
+  // and rewires stage agents (see MODE_PRESETS). `full` (or omitted) means the
+  // agents block below is used exactly as written.
+  mode: z.enum(MODES).optional(),
+  // Optional: a bare `mode: solo|duo` config needs no roster of its own.
+  agents: z.record(AgentSchema).default({}),
   stages: z.array(StageSchema).min(1),
   pricing: z.record(PricingEntrySchema).default({}),
   utilityModel: z.string().min(1).optional(),
@@ -103,6 +112,45 @@ export type Budget = z.infer<typeof BudgetSchema>;
 export type MemoryConfig = z.infer<typeof MemorySchema>;
 export type AssembleConfig = z.infer<typeof ConfigSchema>;
 
+const MTOK = 1_000_000;
+type ModePreset = {
+  agents: Record<string, AgentDef>;
+  pricing: Record<string, PricingEntry>;
+  /** Which mode agent handles a given stage, by role. */
+  assign: (stage: StageDef) => string;
+};
+/**
+ * `mode` presets. A preset seeds the agents block and rewires every stage's
+ * agent at load time:
+ *   solo — one model plays every hero (claude/fable-5)
+ *   duo  — writer (claude/fable-5) + cross-provider reviewer (codex/gpt-5.6-sol)
+ *   full — no expansion; the file's agents block is used as written (the roster)
+ * A file `agents:` entry with the same name (writer/reviewer/solo) overrides the
+ * preset's profile — bump the reviewer's model by redefining `reviewer`. To pin
+ * individual stages to specific agents, use `mode: full` (or omit mode).
+ */
+const MODE_PRESETS: Record<"solo" | "duo", ModePreset> = {
+  solo: {
+    agents: {
+      solo: { role: "implementer", provider: "claude", model: "fable-5", skills: [] },
+    },
+    pricing: { "fable-5": { input: 10 / MTOK, output: 50 / MTOK } },
+    assign: () => "solo",
+  },
+  duo: {
+    agents: {
+      writer:   { role: "implementer",   provider: "claude", model: "fable-5",     skills: [] },
+      reviewer: { role: "code reviewer", provider: "codex",  model: "gpt-5.6-sol", skills: [], effort: "high" },
+    },
+    pricing: {
+      "fable-5":     { input: 10 / MTOK, output: 50 / MTOK },
+      "gpt-5.6-sol": { input: 5 / MTOK,  output: 30 / MTOK },
+    },
+    // Review-flavored stages (code-review, plan-review, design-review) → reviewer.
+    assign: stage => (/review/.test(stage.id) ? "reviewer" : "writer"),
+  },
+};
+
 export function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): AssembleConfig {
   const path = join(dir, "assemble.config.yaml");
   let raw: string;
@@ -114,6 +162,16 @@ export function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): A
   const parsed = ConfigSchema.safeParse(parse(raw));
   if (!parsed.success) throw new ConfigError(parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "));
   const cfg = parsed.data;
+
+  // Expand a `mode` preset: seed the mode's agents (a file agent of the same
+  // name wins), add its pricing (file pricing wins), and rewire every stage to
+  // the mode agent for its role. `full`/omitted leaves the config untouched.
+  if (cfg.mode && cfg.mode !== "full") {
+    const preset = MODE_PRESETS[cfg.mode];
+    cfg.agents = { ...preset.agents, ...cfg.agents };
+    cfg.pricing = { ...preset.pricing, ...cfg.pricing };
+    for (const s of cfg.stages) s.agent = preset.assign(s);
+  }
 
   const seen = new Set<string>();
   for (const s of cfg.stages) {

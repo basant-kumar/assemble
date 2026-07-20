@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import { ConfigError, loadConfig, THINKING_LEVELS, EFFORT_LEVELS, DEFAULT_ARCHI_PATH } from "./config.js";
+import { ConfigError, loadConfig, MODES, type Mode, THINKING_LEVELS, EFFORT_LEVELS, DEFAULT_ARCHI_PATH } from "./config.js";
 
 export type Choice<T> = { name: string; value: T; description?: string };
 
@@ -19,6 +19,7 @@ export type WizardIO = {
 const MTOK = 1_000_000;
 const DONE = "__done__";
 const ADD = "__add__";
+const CUSTOM = "__custom__";
 
 type Provider = "claude" | "codex";
 
@@ -88,8 +89,29 @@ export const ROLES: string[] = [...new Set(ROSTER.map(r => r.role))];
 
 /** Known models per provider — the model picker is select-only to prevent typos. */
 export const KNOWN_MODELS: Record<Provider, string[]> = {
-  claude: ["opus", "sonnet", "haiku"],
-  codex: ["gpt-5-codex", "gpt-5-codex-mini"],
+  claude: ["fable-5", "opus", "sonnet", "haiku"],
+  codex: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5-codex", "gpt-5-codex-mini"],
+};
+
+/**
+ * List price ($ per million tokens) per known model. Drives the pricing
+ * pre-fill in the wizard so picking a model suggests its real rate instead of
+ * the outgoing preset's. Custom models fall back to the provider default.
+ * Sources: Anthropic Fable 5 ($10/$50); OpenAI GPT-5.6 Sol ($5/$30),
+ * Terra ($2.50/$15), Luna ($1/$6).
+ */
+export const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  // claude
+  "fable-5": { input: 10, output: 50 },
+  opus: { input: 15, output: 75 },
+  sonnet: { input: 3, output: 15 },
+  haiku: { input: 1, output: 5 },
+  // codex / openai
+  "gpt-5.6-sol": { input: 5, output: 30 },
+  "gpt-5.6-terra": { input: 2.5, output: 15 },
+  "gpt-5.6-luna": { input: 1, output: 6 },
+  "gpt-5-codex": { input: 1.25, output: 10 },
+  "gpt-5-codex-mini": { input: 0.25, output: 1 },
 };
 
 /** Build the full default config (all roster heroes seeded) — used by `assemble init`. */
@@ -183,8 +205,17 @@ async function editHero(io: WizardIO, preset: Preset, cur: AgentDoc, role0: stri
   // (e.g. an older hand-edited config), keep it selectable so we never silently
   // drop it — but new picks come from the constrained menu.
   const known = KNOWN_MODELS[provider];
-  const modelChoices = (known.includes(modelDef) ? known : [modelDef, ...known]).map(m => ({ name: m, value: m }));
-  const model = await io.select("model", modelChoices, modelDef);
+  const listed = known.includes(modelDef) ? known : [modelDef, ...known];
+  const modelChoices = [
+    ...listed.map(m => ({ name: m, value: m })),
+    { name: "＋ custom model…", value: CUSTOM },
+  ];
+  let model = await io.select("model", modelChoices, modelDef);
+  if (model === CUSTOM) {
+    // Free-form escape hatch so any model (incl. ones newer than this list)
+    // can be configured without a code change.
+    model = (await io.input("custom model id", modelDef)).trim() || modelDef;
+  }
   const roleDef = cur.role || role0;
   const roleChoices = (ROLES.includes(roleDef) ? ROLES : [roleDef, ...ROLES]).map(r => ({ name: r, value: r }));
   const role = await io.select("role", roleChoices, roleDef);
@@ -207,8 +238,10 @@ async function editHero(io: WizardIO, preset: Preset, cur: AgentDoc, role0: stri
   const maxOut = await io.input("max_output (advisory, blank to skip)", cur.max_output ?? "");
   if (maxOut) agent.max_output = maxOut;
 
-  const inRate = await io.input("input $/Mtok", String(base.pricing.input));
-  const outRate = await io.input("output $/Mtok", String(base.pricing.output));
+  // Pre-fill from the chosen model's list price when known, else the base.
+  const rates0 = MODEL_PRICING[agent.model] ?? base.pricing;
+  const inRate = await io.input("input $/Mtok", String(rates0.input));
+  const outRate = await io.input("output $/Mtok", String(rates0.output));
   return { agent, rates: { input: Number(inRate) || 0, output: Number(outRate) || 0 } };
 }
 
@@ -269,6 +302,27 @@ export async function runConfigureWizard(dir: string, io: WizardIO): Promise<{ p
       output: preset.pricing.output / MTOK,
     };
   }
+
+  // Team shape. solo/duo are presets the loader expands; full uses the roster
+  // configured below. Writing `mode` here; the loader wires agents at load.
+  const modeLabels: Record<Mode, string> = {
+    solo: "solo — one model plays every hero (claude/fable-5)",
+    duo:  "duo  — writer (claude/fable-5) + reviewer (codex/gpt-5.6-sol)",
+    full: "full — the whole roster, configured per-hero below",
+  };
+  const curMode: Mode =
+    typeof doc.mode === "string" && (MODES as readonly string[]).includes(doc.mode)
+      ? (doc.mode as Mode)
+      : "full";
+  const mode = await io.select(
+    "Team shape (mode)",
+    MODES.map(m => ({ name: modeLabels[m], value: m })),
+    curMode,
+  );
+  if (mode === "full") delete doc.mode;
+  else doc.mode = mode;
+  if (mode !== "full")
+    io.out(`  ℹ ${mode} mode: agents are derived at load — the roster below is kept but unused until you switch to full`);
 
   const heroes = Object.keys(agents);
 
