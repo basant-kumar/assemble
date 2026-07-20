@@ -4,20 +4,52 @@
   "description": "Multi-agent workflow orchestrator: plan, review, implement, and release with gated, schema-validated agent pipelines.",
   "license": "MIT",
   "author": "bugbeast",
-  "repository": { "type": "git", "url": "git+https://github.com/basant-kumar/assemble.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/basant-kumar/assemble.git"
+  },
   "homepage": "https://github.com/basant-kumar/assemble#readme",
-  "bugs": { "url": "https://github.com/basant-kumar/assemble/issues" },
-  "keywords": ["cli", "orchestrator", "agents", "workflow", "ai", "pipeline", "code-review"],
+  "bugs": {
+    "url": "https://github.com/basant-kumar/assemble/issues"
+  },
+  "keywords": [
+    "cli",
+    "orchestrator",
+    "agents",
+    "workflow",
+    "ai",
+    "pipeline",
+    "code-review"
+  ],
   "type": "module",
-  "engines": { "node": ">=18" },
-  "bin": { "assemble": "dist/cli.js" },
-  "files": ["dist", "README.md", "LICENSE"],
-  "publishConfig": { "access": "public" },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "assemble": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "prepublishOnly": "npm run build && npm test"
   },
-  "dependencies": { "commander": "^12.1.0", "yaml": "^2.5.0", "zod": "^3.23.0" },
-  "devDependencies": { "typescript": "^5.5.0", "vitest": "^2.0.0", "@types/node": "^20.14.0" }
+  "dependencies": {
+    "@inquirer/prompts": "^8.5.2",
+    "commander": "^12.1.0",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
 }

@@ -15,6 +15,8 @@ import { resolveSideOpModel } from "./sideops.js";
 import type { RunStageOpts } from "./engine.js";
 import { aggregateCost } from "./cost.js";
 import { budgetReport } from "./budget.js";
+import { runConfigureWizard, type WizardIO } from "./configure.js";
+import { select, input } from "@inquirer/prompts";
 
 const ICONS: Record<StageStatus, string> = {
   approved: "✔", awaiting_gate: "⏸", failed: "✖", needs_rework: "✖", running: "▶", pending: "·", skipped: "⤼",
@@ -43,6 +45,18 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
   });
 
   program.command("status").description("pipeline status — who's working").action(() => printStatus(requireConfig()));
+
+  program.command("configure").alias("config")
+    .description("interactive wizard: pick a model + knobs per hero (recommends by role)")
+    .action(async () => {
+      requireConfig(); // fail fast if there's no config to configure
+      const wio: WizardIO = {
+        select: (message, choices, def) => select({ message, choices, default: def, loop: false }),
+        input: (message, def) => input({ message, default: def }),
+        out: io.out,
+      };
+      await runConfigureWizard(dir, wio);
+    });
 
   program.command("cost").description("aggregate token cost by worker and stage").action(() => {
     const summary = aggregateCost(readLedger(dir));

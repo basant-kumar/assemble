@@ -1,0 +1,28 @@
+project: MyApp
+agents:
+  thor:
+    role: implementer
+    provider: claude
+    model: opus
+  vision:
+    role: code reviewer
+    provider: codex
+    model: gpt-5-codex
+stages:
+  - id: implement
+    agent: thor
+    gate: auto
+    prompt: Implement the approved plan. Follow existing project conventions.
+  - id: code-review
+    agent: vision
+    gate: human
+    prompt: "Review the latest diff. End with exactly one verdict: APPROVED,
+      REQUEST_CHANGES, or BLOCKED."
+pricing:
+  opus:
+    input: 0.000015
+    output: 0.000075
+  gpt-5-codex:
+    input: 0.0000011
+    output: 0.0000044
+utilityModel: haiku

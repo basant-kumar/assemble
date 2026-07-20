@@ -141,6 +141,38 @@ assemble gate reject  <stage>      # send it back for rework
 `assemble init` also writes a workflow note into `CLAUDE.md`/`AGENTS.md`,
 so any agent that opens the repo discovers the pipeline on its own.
 
+### Build & run from source (local, unpublished)
+
+No npm release needed — build it yourself and put the `assemble` command on your PATH:
+
+```bash
+git clone https://github.com/basant-kumar/assemble.git
+cd assemble
+npm install            # install deps
+npm run build          # tsc → compiles src/ to dist/ (produces dist/cli.js)
+npm link               # symlink the `assemble` command onto your PATH
+
+# now use it in any repo, backed by your local build:
+cd /path/to/your-repo
+assemble init
+assemble run
+```
+
+Prefer not to touch your PATH? Run the built entrypoint directly instead of `npm link`:
+
+```bash
+node /path/to/assemble/dist/cli.js init      # equivalent to `assemble init`
+```
+
+Iterating on the code:
+
+```bash
+npm run build          # recompile after editing src/
+npm test               # run the vitest suite
+```
+
+> Requires Node ≥ 18. `npm link` is undone with `npm unlink -g @bugbeast/assemble`.
+
 Example board mid-mission:
 
 ```

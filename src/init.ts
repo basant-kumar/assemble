@@ -1,22 +1,10 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ConfigError } from "./config.js";
+import { defaultConfigYaml } from "./configure.js";
 
-export const DEFAULT_CONFIG = `# assemble — Avengers, assemble your AI dev team (default MCU theme; names are a swappable skin)
-project: MyApp
-agents:
-  thor:   { role: implementer,   provider: claude, model: opus }
-  vision: { role: code reviewer, provider: codex,  model: gpt-5-codex }
-stages:
-  - { id: implement,   agent: thor,   gate: auto,  prompt: "Implement the approved plan. Follow existing project conventions." }
-  - { id: code-review, agent: vision, gate: human, prompt: "Review the latest diff. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." }
-# $/token rates — cost = tokens x rate. Add an entry per model you use; unpriced models cost $0.
-pricing:
-  opus:         { input: 0.000015,  output: 0.000075 }
-  gpt-5-codex:  { input: 0.0000011, output: 0.0000044 }
-# side-operations (git commits, and future slack/jira integrations) run on this model — never a premium reasoning model
-utilityModel: haiku
-`;
+/** The full seeded default config (all roster heroes pre-configured). */
+export const DEFAULT_CONFIG = defaultConfigYaml("MyApp");
 
 export function initProject(dir: string): { created: string[] } {
   const cfgPath = join(dir, "assemble.config.yaml");

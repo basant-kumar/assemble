@@ -6,6 +6,23 @@ import { RESERVED_STAGE_IDS } from "./protocol.js";
 
 export class ConfigError extends Error {}
 
+// Provider-specific reasoning knobs, applied by the matching adapter.
+export const THINKING_LEVELS = ["off", "auto", "extended"] as const; // claude
+export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh"] as const; // codex
+export type Thinking = (typeof THINKING_LEVELS)[number];
+export type Effort = (typeof EFFORT_LEVELS)[number];
+
+// e.g. "500ms", "30s", "10m", "2h"
+const DurationSchema = z.string().regex(/^\d+(ms|s|m|h)$/, "duration like '30s', '10m', '2h'");
+
+/** Parse a duration string ("30s", "10m", "2h", "500ms") into milliseconds. */
+export function parseDurationMs(d: string): number {
+  const m = /^(\d+)(ms|s|m|h)$/.exec(d);
+  if (!m) throw new ConfigError(`invalid duration '${d}' — use e.g. '30s', '10m', '2h'`);
+  const unit = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 }[m[2] as "ms" | "s" | "m" | "h"];
+  return Number(m[1]) * unit;
+}
+
 const AgentSchema = z.object({
   role: z.string().min(1),
   provider: z.string().min(1),
@@ -13,6 +30,19 @@ const AgentSchema = z.object({
   // Named capabilities injected into this agent's prompt preamble. Lets a role
   // (e.g. a code reviewer) carry a reusable toolkit of instructions.
   skills: z.array(z.string().min(1)).default([]),
+  // Reasoning knobs applied by the matching adapter at call time:
+  //   thinking (claude) → MAX_THINKING_TOKENS on the child process
+  //   effort   (codex)  → -c model_reasoning_effort=...
+  // A knob for the "wrong" provider is simply ignored by the adapter.
+  thinking: z.enum(THINKING_LEVELS).optional(),
+  effort: z.enum(EFFORT_LEVELS).optional(),
+  // Wall-clock ceiling for a single call. Enforced by the adapter — the child
+  // process is killed if it runs longer.
+  timeout: DurationSchema.optional(),
+  // Advisory metadata: recorded and displayed, but NOT injected as CLI flags —
+  // neither the claude nor codex CLI exposes a reliable knob for these.
+  context_window: z.string().optional(),
+  max_output: z.string().optional(),
 });
 const StageSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]*$/, "stage ids are kebab-case"),

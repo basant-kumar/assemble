@@ -1,6 +1,7 @@
 import type { AssembleConfig } from "./config.js";
+import { parseDurationMs } from "./config.js";
 import { appendEvent, readLedger, deriveStageStatus, isStageSatisfied } from "./ledger.js";
-import { getAdapter, type Adapter } from "./adapters.js";
+import { getAdapter, type Adapter, type RunOpts } from "./adapters.js";
 import { renderAgent } from "./theme.js";
 import { commitStageChanges } from "./sideops.js";
 import { computeCost } from "./cost.js";
@@ -65,10 +66,17 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
   const model = stage.modelOverride ?? agent.model;
   const prompt = withSkills(agent.skills, stage.prompt);
 
+  // Resolve the agent's per-model knobs into adapter run options. Each adapter
+  // applies only what its provider supports; the "wrong" knob is inert.
+  const runOpts: RunOpts = { prompt, model, cwd: dir };
+  if (agent.provider === "claude" && agent.thinking) runOpts.thinking = agent.thinking;
+  if (agent.provider === "codex" && agent.effort) runOpts.effort = agent.effort;
+  if (agent.timeout) runOpts.timeoutMs = parseDurationMs(agent.timeout);
+
   appendEvent(dir, { type: "stage_started", stage: stage.id, agent: stage.agent });
   log(`▶ ${stage.id} — ${renderAgent(stage.agent, config)} on ${model}`);
   try {
-    const result = await adapter.run({ prompt, model, cwd: dir });
+    const result = await adapter.run(runOpts);
     appendEvent(dir, { type: "stage_completed", stage: stage.id, agent: stage.agent, tokensIn: result.tokensIn, tokensOut: result.tokensOut });
     appendEvent(dir, {
       type: "cost", stage: stage.id, worker: stage.agent, model,
