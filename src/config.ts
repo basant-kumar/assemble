@@ -22,17 +22,25 @@ const PricingEntrySchema = z.object({
   input: z.number().nonnegative(),
   output: z.number().nonnegative(),
 });
+const BudgetSchema = z.object({
+  policy: z.enum(["warn", "pause", "block"]).default("warn"),
+  total: z.number().nonnegative().optional(),
+  perStage: z.record(z.number().nonnegative()).default({}),
+  perWorker: z.record(z.number().nonnegative()).default({}),
+});
 const ConfigSchema = z.object({
   project: z.string().min(1),
   agents: z.record(AgentSchema),
   stages: z.array(StageSchema).min(1),
   pricing: z.record(PricingEntrySchema).default({}),
   utilityModel: z.string().min(1).optional(),
+  budget: BudgetSchema.optional(),
 });
 
 export type AgentDef = z.infer<typeof AgentSchema>;
 export type StageDef = z.infer<typeof StageSchema>;
 export type PricingEntry = z.infer<typeof PricingEntrySchema>;
+export type Budget = z.infer<typeof BudgetSchema>;
 export type AssembleConfig = z.infer<typeof ConfigSchema>;
 
 export function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): AssembleConfig {

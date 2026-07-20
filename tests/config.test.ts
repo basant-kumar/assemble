@@ -81,4 +81,32 @@ describe("loadConfig", () => {
     const cfg = loadConfig(writeCfg(withUtility));
     expect(cfg.utilityModel).toBe("haiku");
   });
+  it("budget is undefined by default", () => {
+    const cfg = loadConfig(writeCfg(VALID));
+    expect(cfg.budget).toBeUndefined();
+  });
+  it("parses a budget block with policy and caps", () => {
+    const withBudget = VALID +
+      `budget:\n  policy: block\n  total: 5\n  perStage: { implement: 2 }\n  perWorker: { thor: 1.5 }\n`;
+    const cfg = loadConfig(writeCfg(withBudget));
+    expect(cfg.budget).toEqual({
+      policy: "block",
+      total: 5,
+      perStage: { implement: 2 },
+      perWorker: { thor: 1.5 },
+    });
+  });
+  it("defaults budget policy to warn when omitted", () => {
+    const withBudget = VALID + `budget:\n  total: 3\n`;
+    const cfg = loadConfig(writeCfg(withBudget));
+    expect(cfg.budget?.policy).toBe("warn");
+  });
+  it("rejects a negative budget cap", () => {
+    const bad = VALID + `budget:\n  total: -1\n`;
+    expect(() => loadConfig(writeCfg(bad))).toThrow(ConfigError);
+  });
+  it("rejects an invalid budget policy", () => {
+    const bad = VALID + `budget:\n  policy: explode\n  total: 1\n`;
+    expect(() => loadConfig(writeCfg(bad))).toThrow(ConfigError);
+  });
 });
