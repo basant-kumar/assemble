@@ -54,7 +54,8 @@ flowchart TD
     subgraph P["/assemble-plan"]
         plan["🤖 stark (architect)<br/>plan (interactive)"] --> pr["🔮 strange (plan/design reviewer)<br/>plan-review"]
         pr -->|REQUEST_CHANGES ≤ max_rounds| plan
-        pr -->|APPROVED| design["🤖 stark (architect) / 🧬 shuri (UI designer)<br/>design"]
+        pr -->|APPROVED| HGATE{{"🏛️ Council (human)<br/>approve-to-implement"}}
+        HGATE -->|approved| design["🤖 stark (architect) / 🧬 shuri (UI designer)<br/>design (auto · skippable)"]
         design --> dr["🔮 strange (plan/design reviewer)<br/>design-review"]
         dr -->|REQUEST_CHANGES| design
     end
@@ -94,7 +95,7 @@ flowchart LR
 ```
 
 Recast one hero (edit one profile) and every stage they work changes. Or pin a
-stage inline: `code-review: {provider: claude, model: haiku-4.5}`.
+stage inline: `code-review: {provider: claude, model: claude-haiku-4-5-20251001}`.
 
 ## The review loop (why agents can't skip gates)
 
@@ -124,8 +125,9 @@ npm i -g @bugbeast/assemble        # installs the `assemble` command
 cd your-repo && assemble init      # scaffold assemble.config.yaml (MCU theme)
 assemble run                       # run the full pipeline serially:
                                    #   stark (architect) plans → strange (plan/
-                                   #   design reviewer) reviews → thor (implementer)
-                                   #   builds in gated batches → cap (release) ships
+                                   #   design reviewer) reviews → you approve the
+                                   #   plan → thor (implementer) builds in gated
+                                   #   batches → cap (release) ships
 assemble status                    # mission board · who's working
 assemble cost                      # token cost by worker and stage
 assemble budget                    # per-scope spend vs caps · pepper (ledger)'s books
@@ -138,8 +140,15 @@ assemble gate approve <stage>      # World Security Council says go
 assemble gate reject  <stage>      # send it back for rework
 ```
 
-`assemble init` also writes a workflow note into `CLAUDE.md`/`AGENTS.md`,
-so any agent that opens the repo discovers the pipeline on its own.
+By default two stages wait for you: **plan-review** (your approve-to-implement
+sign-off, once strange has APPROVED the plan) and **release** (ship order).
+Add `gate: human` to any other stage to pause there too.
+
+`assemble init` also drops the assemble protocol at the repo root so any worker
+that opens the repo follows the same gates: a `CLAUDE.md` skill for Claude and a
+mirrored `AGENTS.md` for codex (and other `AGENTS.md`-aware CLIs). Both are
+refreshed in place inside a marked block on re-init and never clobber your own
+notes.
 
 ### Build & run from source (local, unpublished)
 
