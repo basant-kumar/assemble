@@ -1,3 +1,6 @@
 
 # local worktrees / claude state
 .claude/
+
+# vitest cache
+node_modules/.vite/
