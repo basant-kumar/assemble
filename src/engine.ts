@@ -11,6 +11,11 @@ export type RunStageOpts = {
   adapters?: Record<string, Adapter>;
   log?: (line: string) => void;
   autoCommit?: { adapter: Adapter; gitBin?: string };
+  /**
+   * Consulted when a "pause"-policy budget breach is detected. Return true to
+   * approve the overspend and continue the run; false (or omit) to stop.
+   */
+  approveBudget?: (decision: import("./budget.js").BudgetDecision) => boolean;
 };
 
 export async function runStage(dir: string, config: AssembleConfig, stageId: string, opts: RunStageOpts = {}): Promise<void> {

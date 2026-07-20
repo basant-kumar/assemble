@@ -5,7 +5,7 @@ import type { StageDef } from "./config.js";
 
 export type LedgerEvent = {
   ts: string;
-  type: "stage_started" | "stage_completed" | "stage_failed" | "gate_approved" | "gate_rejected" | "cost";
+  type: "stage_started" | "stage_completed" | "stage_failed" | "gate_approved" | "gate_rejected" | "cost" | "budget_abort";
   stage: string;
   agent?: string;
   worker?: string;

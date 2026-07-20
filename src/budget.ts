@@ -11,6 +11,23 @@ export type BudgetDecision = {
 };
 
 /**
+ * Thrown when a "block" policy budget breach halts the pipeline. Carries the
+ * offending breaches so callers can surface them and write a budget_abort
+ * ledger event.
+ */
+export class BudgetError extends Error {
+  readonly breaches: Breach[];
+  constructor(breaches: Breach[]) {
+    const summary = breaches
+      .map((b) => `${b.scope} spent ${b.spent} > cap ${b.cap}`)
+      .join("; ");
+    super(`budget breached (block): ${summary}`);
+    this.name = "BudgetError";
+    this.breaches = breaches;
+  }
+}
+
+/**
  * Deterministically decide whether the ledger's spend has breached any
  * configured budget cap. Pure: no I/O, no model calls. A scope breaches only
  * when spend is *strictly* over its cap.
