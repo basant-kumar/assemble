@@ -1,9 +1,9 @@
 # assemble 🦸
 
-[![npm version](https://img.shields.io/npm/v/@bugbeast/assemble.svg)](https://www.npmjs.com/package/@bugbeast/assemble)
-[![npm downloads](https://img.shields.io/npm/dm/@bugbeast/assemble.svg)](https://www.npmjs.com/package/@bugbeast/assemble)
-[![node](https://img.shields.io/node/v/@bugbeast/assemble.svg)](https://nodejs.org)
-[![license](https://img.shields.io/npm/l/@bugbeast/assemble.svg)](./LICENSE)
+[![npm version](https://img.shields.io/npm/v/@bugbeast/assemble)](https://www.npmjs.com/package/@bugbeast/assemble)
+[![npm downloads](https://img.shields.io/npm/dm/@bugbeast/assemble)](https://www.npmjs.com/package/@bugbeast/assemble)
+[![node](https://img.shields.io/node/v/@bugbeast/assemble)](https://nodejs.org)
+[![license](https://img.shields.io/npm/l/@bugbeast/assemble)](./LICENSE)
 
 **The Avengers, but for your codebase.** A multi-agent dev workflow
 orchestrator: Plan → Design → Implement → Release, with a different AI model
