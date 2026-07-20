@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initProject, ARCHI_PATH } from "../src/init.js";
+import { initProject, ARCHI_PATH, SKILL_PATH } from "../src/init.js";
 import { loadConfig, ConfigError } from "../src/config.js";
 
 describe("initProject", () => {
@@ -23,7 +23,7 @@ describe("initProject", () => {
     const dir = mkdtempSync(join(tmpdir(), "asm-"));
     initProject(dir);
     const cfg = loadConfig(dir);
-    expect(cfg.pricing.opus).toBeDefined();
+    expect(cfg.pricing["claude-opus-4-8"]).toBeDefined();
     expect(cfg.pricing["gpt-5-codex"]).toBeDefined();
   });
   it("leaves memory opt-in: disabled by default and does not seed ARCHI.md", () => {
@@ -40,5 +40,12 @@ describe("initProject", () => {
     initProject(dir);
     expect(ARCHI_PATH).toBe("docs/assemble/ARCHI.md");
     expect(loadConfig(dir).memory.path).toBe("docs/assemble/ARCHI.md");
+  });
+  it("installs the assemble skill at the repo level (not globally) and reports it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "asm-"));
+    const r = initProject(dir);
+    expect(SKILL_PATH).toBe(".claude/skills/assemble");
+    expect(existsSync(join(dir, SKILL_PATH, "SKILL.md"))).toBe(true);
+    expect(r.created).toContain(SKILL_PATH + "/");
   });
 });

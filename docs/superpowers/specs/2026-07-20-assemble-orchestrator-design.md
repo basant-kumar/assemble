@@ -129,7 +129,7 @@ providers:
 models:                          # tuning profiles (all fields optional)
   fable-deep:
     provider: claude
-    model: fable
+    model: claude-fable-5
     thinking: extended           # off | auto | extended
     effort: high                 # low | medium | high | xhigh
     context_window: 200k         # engine budgets prompt size; warns on overflow

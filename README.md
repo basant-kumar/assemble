@@ -190,13 +190,22 @@ run 2026-07-20-dark-mode          budget $9.40 / $25
 Copy profiles from **[`templates/assemble.config.example.yaml`](templates/assemble.config.example.yaml)** —
 a catalog of ready-made profiles for Claude (fable, opus, sonnet, haiku), Codex
 (gpt-5.6 family, codex-mini), Gemini, OpenCode and Mistral Vibe, with knobs and
-$/Mtok pricing for pepper (ledger)'s books. Presets:
+$/Mtok pricing for pepper (ledger)'s books.
 
-| `mode:` | meaning |
-|---|---|
-| `solo` | one model plays every hero (cheapest, no cross-check) |
-| `duo`  | stark (architect) writes, strange (plan/design reviewer) reviews cross-provider (TRIP's proven setup) |
-| `full` | the whole roster, each hero tuned separately |
+A `mode:` at the top of `assemble.config.yaml` is a shorthand that seeds an
+agents block and rewires every stage at load time — pick one instead of
+hand-casting the whole roster:
+
+| `mode:` | seeds | stage wiring |
+|---|---|---|
+| `solo` | `solo` — claude/fable-5 | every stage → `solo` (cheapest, no cross-check) |
+| `duo`  | `writer` — claude/fable-5 · `reviewer` — codex/gpt-5.6-sol (effort high) | review stages (code/plan/design-review) → `reviewer`, all others → `writer` (cross-provider, TRIP's proven setup) |
+| `full` | nothing — your `agents:` block is used as written | the roster, each hero tuned separately (omit `mode:` for the same effect) |
+
+An `agents:` entry with the same name (`solo`/`writer`/`reviewer`) overrides the
+preset's profile — e.g. redefine `reviewer` to bump its model. To pin
+individual stages, use `mode: full` (or omit it). The **configure wizard** asks
+which shape you want and writes the chosen `mode:` for you.
 
 ## Budget caps
 

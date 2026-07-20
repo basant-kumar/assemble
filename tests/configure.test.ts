@@ -43,7 +43,7 @@ function scriptedIO(answers: string[]): WizardIO & { remaining: () => number } {
 
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), "asm-cfg-"));
-  initProject(dir); // thor (implementer, claude/opus) + vision (code reviewer, codex/gpt-5-codex)
+  initProject(dir); // full roster seeded (stark…jarvis); full stage flow with human gates on plan-review + release
   return dir;
 }
 
@@ -66,7 +66,7 @@ describe("runConfigureWizard", () => {
 
     const cfg = loadConfig(dir);
     expect(cfg.agents.thor.provider).toBe("claude");
-    expect(cfg.agents.thor.model).toBe("opus");
+    expect(cfg.agents.thor.model).toBe("claude-opus-4-8");
     expect(cfg.agents.vision.provider).toBe("codex");
     expect(cfg.agents.vision.effort).toBe("high");
     expect(cfg.pricing["gpt-5-codex"].input).toBeCloseTo(1.25 / 1_000_000);
@@ -104,9 +104,9 @@ describe("runConfigureWizard", () => {
     await runConfigureWizard(dir, io);
     const cfg = loadConfig(dir);
     expect(cfg.agents.vision.provider).toBe("claude");
-    expect(cfg.agents.vision.model).toBe("opus");
+    expect(cfg.agents.vision.model).toBe("claude-opus-4-8");
     expect(cfg.agents.vision.effort).toBeUndefined();
-    expect(cfg.pricing.opus.input).toBeCloseTo(15 / 1_000_000);
+    expect(cfg.pricing["claude-opus-4-8"].input).toBeCloseTo(15 / 1_000_000);
   });
 
   it("edit honors explicit overrides", async () => {
@@ -140,7 +140,7 @@ describe("runConfigureWizard", () => {
     const cfg = loadConfig(dir);
     expect(cfg.agents.banner).toBeDefined();
     expect(cfg.agents.banner.provider).toBe("claude"); // implementer archetype
-    expect(cfg.agents.banner.model).toBe("opus");
+    expect(cfg.agents.banner.model).toBe("claude-opus-4-8");
   });
 
   it("backfills the full roster into an older two-hero config without clobbering it", async () => {
@@ -174,24 +174,24 @@ describe("runConfigureWizard", () => {
     expect(cfg.agents.thor.effort).toBe("low");
   });
 
-  it("picking fable-5 pre-fills its Anthropic list price", async () => {
+  it("picking claude-fable-5 pre-fills its Anthropic list price", async () => {
     const dir = setup();
     const io = scriptedIO([
       "thor", "edit",
-      "claude",   // provider (thor already claude)
-      "fable-5",  // model — newly known
-      "", "",     // role, skills
-      "",         // thinking
-      "", "", "", // timeout, context_window, max_output
-      "",         // input $/Mtok (default should be 10, not opus' 15)
-      "",         // output $/Mtok (default should be 50)
+      "claude",         // provider (thor already claude)
+      "claude-fable-5", // model — newly known
+      "", "",           // role, skills
+      "",               // thinking
+      "", "", "",       // timeout, context_window, max_output
+      "",               // input $/Mtok (default should be 10, not opus' 15)
+      "",               // output $/Mtok (default should be 50)
       "__done__",
     ]);
     await runConfigureWizard(dir, io);
     const cfg = loadConfig(dir);
-    expect(cfg.agents.thor.model).toBe("fable-5");
-    expect(cfg.pricing["fable-5"].input).toBeCloseTo(10 / 1_000_000);
-    expect(cfg.pricing["fable-5"].output).toBeCloseTo(50 / 1_000_000);
+    expect(cfg.agents.thor.model).toBe("claude-fable-5");
+    expect(cfg.pricing["claude-fable-5"].input).toBeCloseTo(10 / 1_000_000);
+    expect(cfg.pricing["claude-fable-5"].output).toBeCloseTo(50 / 1_000_000);
   });
 
   it("picking gpt-5.6-sol pre-fills its OpenAI list price", async () => {

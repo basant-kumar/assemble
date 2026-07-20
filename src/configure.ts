@@ -50,17 +50,17 @@ type Preset = {
 
 /** Sensible per-provider fallback when the user switches provider mid-edit. */
 const PROVIDER_DEFAULTS: Record<Provider, { model: string; thinking?: string; effort?: string; pricing: { input: number; output: number } }> = {
-  claude: { model: "opus", thinking: "auto", pricing: { input: 15, output: 75 } },
+  claude: { model: "claude-opus-4-8", thinking: "auto", pricing: { input: 15, output: 75 } },
   codex: { model: "gpt-5-codex", effort: "high", pricing: { input: 1.25, output: 10 } },
 };
 
 /** Recommended profiles by hero archetype — accepted wholesale or tweaked. */
 const PRESETS: Record<string, Preset> = {
-  architect: { role: "architect", provider: "claude", model: "opus", thinking: "extended", timeout: "20m", context_window: "200k", pricing: { input: 15, output: 75 }, why: "deep reasoning for plan/design work" },
+  architect: { role: "architect", provider: "claude", model: "claude-opus-4-8", thinking: "extended", timeout: "20m", context_window: "200k", pricing: { input: 15, output: 75 }, why: "deep reasoning for plan/design work" },
   reviewer: { role: "code reviewer", provider: "codex", model: "gpt-5-codex", effort: "high", timeout: "20m", context_window: "400k", pricing: { input: 1.25, output: 10 }, why: "cross-provider heavyweight for review" },
-  implementer: { role: "implementer", provider: "claude", model: "opus", thinking: "auto", timeout: "15m", context_window: "200k", pricing: { input: 15, output: 75 }, why: "strong general implementer" },
-  worker: { role: "implementer", provider: "claude", model: "sonnet", thinking: "auto", timeout: "10m", context_window: "200k", pricing: { input: 3, output: 15 }, why: "workhorse for big batches / refactors" },
-  fast: { role: "fast worker", provider: "claude", model: "haiku", thinking: "off", timeout: "5m", context_window: "200k", pricing: { input: 1, output: 5 }, why: "cheap + fast for small batches / memory" },
+  implementer: { role: "implementer", provider: "claude", model: "claude-opus-4-8", thinking: "auto", timeout: "15m", context_window: "200k", pricing: { input: 15, output: 75 }, why: "strong general implementer" },
+  worker: { role: "implementer", provider: "claude", model: "claude-sonnet-4-6", thinking: "auto", timeout: "10m", context_window: "200k", pricing: { input: 3, output: 15 }, why: "workhorse for big batches / refactors" },
+  fast: { role: "fast worker", provider: "claude", model: "claude-haiku-4-5-20251001", thinking: "off", timeout: "5m", context_window: "200k", pricing: { input: 1, output: 5 }, why: "cheap + fast for small batches / memory" },
   precision: { role: "precision editor", provider: "codex", model: "gpt-5-codex-mini", effort: "low", timeout: "5m", context_window: "200k", pricing: { input: 0.25, output: 1 }, why: "cheap precision for minor edits" },
 };
 
@@ -89,7 +89,7 @@ export const ROLES: string[] = [...new Set(ROSTER.map(r => r.role))];
 
 /** Known models per provider — the model picker is select-only to prevent typos. */
 export const KNOWN_MODELS: Record<Provider, string[]> = {
-  claude: ["fable-5", "opus", "sonnet", "haiku"],
+  claude: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
   codex: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5-codex", "gpt-5-codex-mini"],
 };
 
@@ -101,11 +101,11 @@ export const KNOWN_MODELS: Record<Provider, string[]> = {
  * Terra ($2.50/$15), Luna ($1/$6).
  */
 export const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  // claude
-  "fable-5": { input: 10, output: 50 },
-  opus: { input: 15, output: 75 },
-  sonnet: { input: 3, output: 15 },
-  haiku: { input: 1, output: 5 },
+  // claude (exact API model IDs — dashed, not dotted; haiku carries its date suffix)
+  "claude-fable-5": { input: 10, output: 50 },
+  "claude-opus-4-8": { input: 15, output: 75 },
+  "claude-sonnet-4-6": { input: 3, output: 15 },
+  "claude-haiku-4-5-20251001": { input: 1, output: 5 },
   // codex / openai
   "gpt-5.6-sol": { input: 5, output: 30 },
   "gpt-5.6-terra": { input: 2.5, output: 15 },
@@ -130,11 +130,23 @@ export function defaultRosterDoc(project: string): Record<string, unknown> {
     project,
     agents,
     stages: [
-      { id: "implement", agent: "thor", gate: "auto", prompt: "Implement the approved plan. Follow existing project conventions." },
-      { id: "code-review", agent: "vision", gate: "human", prompt: "Review the latest diff. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
+      // Plan path: stark drafts → strange reviews (iterating until sound) →
+      // human signs off before any code is written. The human gate on
+      // `plan-review` is the approval-to-implement checkpoint.
+      { id: "plan", agent: "stark", gate: "auto", prompt: "Draft an implementation plan for the requested change. Break it into small, independently reviewable steps with clear acceptance criteria." },
+      { id: "plan-review", agent: "strange", gate: "human", prompt: "Review stark's plan for soundness, scope, and risk. Send it back to the planner with concrete asks until it is sound, then end with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED. On APPROVED the plan waits for the human's sign-off (`assemble gate approve plan-review`) before implementation begins." },
+      // Design path: skippable for pure-logic changes (`assemble gate skip design`).
+      { id: "design", agent: "stark", gate: "auto", when: "auto", flavor: "technical", prompt: "Produce a technical design for the approved plan: interfaces, data shapes, and the touch-list of files. For UI-flavored work this routes to shuri." },
+      { id: "design-review", agent: "strange", gate: "auto", when: "auto", prompt: "Review the design against the plan. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
+      // Implement → review → ship: driven by the orchestrator once the plan is
+      // human-approved. Only the release needs a second human sign-off.
+      { id: "implement", agent: "thor", gate: "auto", prompt: "Implement the approved plan in small batches. Follow existing project conventions." },
+      { id: "code-review", agent: "vision", gate: "auto", prompt: "Review the latest diff against the plan. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
+      { id: "code-review-full", agent: "danvers", gate: "auto", when: "auto", prompt: "Fresh-thread full-tree review of the complete change. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
+      { id: "release", agent: "cap", gate: "human", prompt: "Prepare release notes and ship in the order the human approves (`assemble gate approve release`)." },
     ],
     pricing,
-    utilityModel: "haiku",
+    utilityModel: "claude-haiku-4-5-20251001",
     // Opt-in: architectural memory (ARCHI.md + `memory-sync`) is off by default.
     // Best for single-source-of-truth projects; flip `enabled` to true to use it.
     memory: { enabled: false, path: DEFAULT_ARCHI_PATH, agent: "jarvis" },
@@ -306,8 +318,8 @@ export async function runConfigureWizard(dir: string, io: WizardIO): Promise<{ p
   // Team shape. solo/duo are presets the loader expands; full uses the roster
   // configured below. Writing `mode` here; the loader wires agents at load.
   const modeLabels: Record<Mode, string> = {
-    solo: "solo — one model plays every hero (claude/fable-5)",
-    duo:  "duo  — writer (claude/fable-5) + reviewer (codex/gpt-5.6-sol)",
+    solo: "solo — one model plays every hero (claude/claude-fable-5)",
+    duo:  "duo  — writer (claude/claude-fable-5) + reviewer (codex/gpt-5.6-sol)",
     full: "full — the whole roster, configured per-hero below",
   };
   const curMode: Mode =
@@ -342,7 +354,7 @@ export async function runConfigureWizard(dir: string, io: WizardIO): Promise<{ p
       if (!name) continue;
       if (!heroes.includes(name)) {
         heroes.push(name);
-        agents[name] = { role: "", provider: "claude", model: "opus" };
+        agents[name] = { role: "", provider: "claude", model: "claude-opus-4-8" };
       }
       await configureHero(io, name, agents, pricing);
       continue;

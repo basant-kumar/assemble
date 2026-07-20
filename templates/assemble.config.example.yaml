@@ -53,7 +53,7 @@ models:
   # ---- Claude ----
   fable-deep:                    # deep reasoning: plan, design, tricky reviews
     provider: claude
-    model: fable
+    model: claude-fable-5
     thinking: extended
     effort: high
     context_window: 200k
@@ -64,7 +64,7 @@ models:
 
   opus-writer:                   # strong general writer/implementer
     provider: claude
-    model: opus-4.8
+    model: claude-opus-4-8
     thinking: auto
     context_window: 200k
     timeout: 15m
@@ -72,7 +72,7 @@ models:
 
   sonnet-worker:                 # workhorse for implement batches
     provider: claude
-    model: sonnet-4.5
+    model: claude-sonnet-4-6
     thinking: auto
     context_window: 200k
     timeout: 10m
@@ -81,7 +81,7 @@ models:
 
   haiku-fast:                    # cheap: small batches, memory-sync, triage
     provider: claude
-    model: haiku-4.5
+    model: claude-haiku-4-5-20251001
     thinking: off
     context_window: 200k
     timeout: 5m
@@ -159,22 +159,26 @@ agents:
 
 # ---------------------------------------------------------------------------
 # STAGES — cast heroes into stages. Any stage also accepts an inline binding.
-# `workers:` lists the call-sign pool for parallel batches; the engine assigns
-# batches to heroes in order (heavy batches first to the strongest).
+# `gate: human` is the enforced approval field — the stage completes into
+# `awaiting_gate` and blocks until `assemble gate approve <stage>`.
+# `workers:` / `parallel:` / `max_rounds:` are design-intent hints (illustrative;
+# the engine assigns batches heavy-first and re-reviews until the verdict lands).
 # ---------------------------------------------------------------------------
 stages:
-  plan:          { agent: stark, interactive: true }
-  plan-review:   { agent: strange, max_rounds: 3 }
+  plan:          { agent: stark }                     # stark drafts the plan
+  # strange reviews (back-and-forth until sound); APPROVED then waits for the
+  # human's sign-off — this gate is the approval-to-implement checkpoint.
+  plan-review:   { agent: strange, gate: human, max_rounds: 3 }
   design:        { agent: stark, flavor: technical, when: auto }  # flavor: ui → shuri · when: auto (skippable when not needed, plan-review ratifies) | always | enabled: false
-  design-review: { agent: strange, max_rounds: 3, enabled: true }
+  design-review: { agent: strange, when: auto, max_rounds: 3 }
   implement:
     workers: [thor, spidey, hulk, hawkeye]            # call-sign pool
     parallel: 2
   code-review:   { agent: vision, max_rounds: 3 }     # delta reviews per batch
-  code-review-full: { agent: danvers }                # fresh-thread final pass
+  code-review-full: { agent: danvers, when: auto }    # fresh-thread final pass
   # Example inline pin — cheap model for just this stage:
   # code-review: { provider: codex, model: gpt-5-codex-mini, max_rounds: 3 }
-  release:       { agent: cap, approval: human }      # 🏛️ Council (human) signs off
+  release:       { agent: cap, gate: human }          # 🏛️ Council (human) signs off before ship
   memory-sync:   { agent: jarvis }
 
 gates:                                                 # 🌈 heimdall (gates) — checklist
