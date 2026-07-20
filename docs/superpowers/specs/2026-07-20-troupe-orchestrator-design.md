@@ -166,6 +166,11 @@ gates:                           # engine-enforced prerequisites
 memory:
   file: docs/troupe/ARCHI.md
   max_tokens: 8k                 # exceeds → automatic compaction pass
+
+budget:                          # cost caps, enforced by the engine
+  per_run: 25                    # $; warn at 80%, act at 100%
+  per_stage: { code-review: 5 }  # optional finer-grained caps
+  action: pause                  # warn | pause (pause → `troupe run resume` after human review)
 ```
 
 Rules:
@@ -241,6 +246,10 @@ The engine is the only writer; every transition appends to the ledger.
   always recorded in the ledger as `approvedBy: human`.
 - Gates are pure checks against run state; refusal messages say exactly which
   verdict is missing and how to obtain it.
+- **Interactive stages use the same machinery**: plan and design take their
+  verdict from the human — `troupe gate approve plan` records
+  `{verdict: APPROVED, approvedBy: human}` with the identical schema and ledger
+  entry as agent verdicts. One uniform state machine, no special-casing.
 
 ## 7. Provider Adapters
 
@@ -265,8 +274,11 @@ interface Adapter {
   --sandbox <level>`; resume via captured thread id.
 - **generic** (Gemini, OpenCode, Mistral Vibe, anything): user command template
   with `{model}` `{promptfile}` `{outputfile}` `{sessionid}` placeholders +
-  declared resume strategy. `replay` prepends a compact transcript of prior
-  rounds so resume-less CLIs still participate in loops.
+  declared resume strategy. `replay` does **not** resend full transcripts: the
+  engine maintains a per-session **rolling digest** (findings + their
+  resolutions, token-capped) and prepends only that — cost stays linear in
+  rounds, not quadratic. Providers with native resume (claude, codex) never pay
+  any replay cost.
 - Normalized knobs are adapter-mapped; unsupported knobs warn and skip, never fail.
 - **Role→sandbox policy engine-enforced**: reviewers get `read-only`;
   writers/workers get `workspace-write` scoped to their worktree. An adapter
@@ -280,9 +292,16 @@ interface Adapter {
 ## 8. Parallel Implement (Batch DAG + Worktrees)
 
 - Plan docs carry a machine-readable **batch manifest** (YAML frontmatter):
-  `batches: [{id, title, files, depends_on: []}]`, authored by the plan stage.
-- Validated at plan-review time: no cycles, no unknown deps; independent batches
-  touching the same files are forced into a dependency.
+  `batches: [{id, title, files, depends_on: []}]`.
+- **Schema-guided authoring**: the engine hands the plan agent a strict JSON
+  schema for the manifest and validates the output immediately with the same
+  parse-retry loop as verdicts (one retry with the validation errors, then
+  escalate to human). The manifest is never trusted-by-prose.
+- `depends_on` may be omitted: the engine **auto-derives dependencies from
+  file-list overlaps** (two batches touching the same file are serialized)
+  rather than failing. Explicit deps are validated: no cycles, no unknown ids.
+- `troupe plan validate` runs the full manifest check standalone, so a human
+  editing the plan gets the same guarantees as the agent.
 - Execution: engine tops up to `parallel: N` workers. Per batch:
   worktree `.troupe/worktrees/<run>/<batch-id>` branched off the run branch →
   worker implements → engine runs test/lint/typecheck in the worktree →
@@ -301,6 +320,19 @@ interface Adapter {
   tokensOut, cost, durationMs, outcome, approvedBy}`.
 - `troupe report [--run X | --all]`: cost/tokens per stage and per model, review
   rounds per stage, human overrides — the data for A/B-ing model configs.
+- **Budget enforcement**: the engine checks the ledger against `budget:` before
+  every agent invocation — warn at 80%, `warn|pause` at cap. A paused run keeps
+  all state and resumes with `troupe run resume` after human review. Ad-hoc
+  invocations count against the run budget too.
+- **Cost posture** (how troupe stays cheap by construction):
+  - Reviewers receive **delta diffs + only the relevant docs**, never
+    whole-repo context dumps.
+  - Mechanical stages run in **fresh minimal-context threads** instead of one
+    long interactive session that re-sends an ever-growing context every turn.
+  - **Cheap models are routable per stage** (e.g., a low-effort model for batch
+    delta reviews, the expensive one only for plan review).
+  - Native session resume on claude/codex means loops add zero replay overhead;
+    generic providers use token-capped digests (§7).
 - **ARCHI.md** kept as long-term architectural memory at `docs/troupe/ARCHI.md`.
   Post-release `memory-sync` stage: agent receives release diff + ARCHI.md,
   updates stale claims, reports drift findings. Token budget breach triggers an
@@ -321,8 +353,9 @@ interface Adapter {
 ## 11. Testing Strategy
 
 - **Unit**: config loader/presets, state machine (every legal/illegal edge),
-  verdict parser (malformed JSON, retry path), DAG validator, template
-  substitution.
+  verdict parser (malformed JSON, retry path), DAG validator (including
+  auto-derived deps from file overlaps), gate auto-drop for disabled stages,
+  budget threshold math, rolling-digest token caps, template substitution.
 - **Adapter contract tests**: fake provider binaries with record/replay fixtures
   exercise invoke/resume/timeout/failure per adapter — no real API calls.
 - **E2E**: a `mock` adapter (scripted responses) drives full pipeline runs in a
@@ -360,3 +393,5 @@ interface Adapter {
 | Language | TypeScript/Node, npm distribution |
 | v1 scope | Parallel batches + cost tracking + drift detection (phased) |
 | Name | `troupe` — agents performing on stages, gated acts |
+| Cost control | Budget caps (warn/pause) + delta reviews + per-stage cheap-model routing + native resume; rolling digests for resume-less providers |
+| Batch manifest trust | Schema-guided authoring with verdict-style parse-retry; deps auto-derived from file overlaps; `troupe plan validate` |
