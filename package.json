@@ -1,0 +1,9 @@
+{
+  "name": "assemble",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "assemble": "dist/cli.js" },
+  "scripts": { "build": "tsc", "test": "vitest run" },
+  "dependencies": { "commander": "^12.1.0", "yaml": "^2.5.0", "zod": "^3.23.0" },
+  "devDependencies": { "typescript": "^5.5.0", "vitest": "^2.0.0", "@types/node": "^20.14.0" }
+}
