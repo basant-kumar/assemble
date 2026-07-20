@@ -32,9 +32,18 @@ describe("runStage", () => {
     const { dir, config } = project();
     await runStage(dir, config, "implement", { adapters: { fake: okAdapter() } });
     const events = readLedger(dir);
-    expect(events.map(e => e.type)).toEqual(["stage_started", "stage_completed"]);
+    expect(events.map(e => e.type)).toEqual(["stage_started", "stage_completed", "cost"]);
     expect(events[0].agent).toBe("thor");
     expect(events[1].tokensOut).toBe(4);
+  });
+  it("ledgers a cost event derived from the pricing table", async () => {
+    const { dir, config } = project();
+    const priced = { ...config, pricing: { opus: { input: 0.000015, output: 0.000075 } } };
+    await runStage(dir, priced, "implement", { adapters: { fake: okAdapter() } });
+    const costEvent = readLedger(dir).find(e => e.type === "cost")!;
+    expect(costEvent.worker).toBe("thor");
+    expect(costEvent.model).toBe("opus");
+    expect(costEvent.costUsd).toBeCloseTo(3 * 0.000015 + 4 * 0.000075, 10);
   });
   it("hard-fails when an earlier gate is not approved", async () => {
     const { dir, config } = project();

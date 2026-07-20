@@ -3,6 +3,7 @@ import { appendEvent, readLedger, deriveStageStatus } from "./ledger.js";
 import { getAdapter, type Adapter } from "./adapters.js";
 import { renderAgent } from "./theme.js";
 import { commitStageChanges } from "./sideops.js";
+import { computeCost } from "./cost.js";
 
 export class GateError extends Error {}
 
@@ -34,10 +35,20 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
   try {
     const result = await adapter.run({ prompt: stage.prompt, model, cwd: dir });
     appendEvent(dir, { type: "stage_completed", stage: stage.id, agent: stage.agent, tokensIn: result.tokensIn, tokensOut: result.tokensOut });
+    appendEvent(dir, {
+      type: "cost", stage: stage.id, worker: stage.agent, model,
+      tokensIn: result.tokensIn, tokensOut: result.tokensOut,
+      costUsd: computeCost(config, model, result.tokensIn, result.tokensOut),
+    });
     log(`✔ ${stage.id} — ${renderAgent(stage.agent, config)} done`);
     if (opts.autoCommit && config.utilityModel) {
       const commit = await commitStageChanges(dir, config, stage.id, {
         adapter: opts.autoCommit.adapter, gitBin: opts.autoCommit.gitBin, diffSummary: result.output,
+      });
+      appendEvent(dir, {
+        type: "cost", stage: stage.id, worker: "utility", model: config.utilityModel,
+        tokensIn: commit.tokensIn, tokensOut: commit.tokensOut,
+        costUsd: computeCost(config, config.utilityModel, commit.tokensIn, commit.tokensOut),
       });
       log(`◆ ${stage.id} — committed: ${commit.message}`);
     }
