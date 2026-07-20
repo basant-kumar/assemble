@@ -10,6 +10,9 @@ const AgentSchema = z.object({
   role: z.string().min(1),
   provider: z.string().min(1),
   model: z.string().min(1),
+  // Named capabilities injected into this agent's prompt preamble. Lets a role
+  // (e.g. a code reviewer) carry a reusable toolkit of instructions.
+  skills: z.array(z.string().min(1)).default([]),
 });
 const StageSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]*$/, "stage ids are kebab-case"),
@@ -17,6 +20,16 @@ const StageSchema = z.object({
   gate: z.enum(["human", "auto"]).default("auto"),
   prompt: z.string().min(1),
   modelOverride: z.string().optional(),
+  // Statically disable a stage: it is treated as "skipped" and never blocks
+  // downstream stages. Use to turn off e.g. a design pass for a pure-logic repo.
+  enabled: z.boolean().default(true),
+  // "always" runs every pipeline pass. "auto" makes the stage skippable at
+  // runtime (`assemble gate skip <id>`) when a human deems it unnecessary,
+  // without editing config.
+  when: z.enum(["always", "auto"]).default("always"),
+  // Optional routing hint for review stages: a "ui" change wants a design
+  // reviewer, "technical" wants a code reviewer, "both" wants each.
+  flavor: z.enum(["technical", "ui", "both"]).optional(),
 });
 const PricingEntrySchema = z.object({
   input: z.number().nonnegative(),

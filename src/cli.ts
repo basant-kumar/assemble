@@ -7,6 +7,7 @@ import { renderAgent } from "./theme.js";
 import { runStage } from "./engine.js";
 import { runPipeline } from "./pipeline.js";
 import { approveGate, rejectGate } from "./gate.js";
+import { skipStage } from "./engine.js";
 import { initProject } from "./init.js";
 import type { StageStatus } from "./protocol.js";
 import { getAdapter } from "./adapters.js";
@@ -16,7 +17,7 @@ import { aggregateCost } from "./cost.js";
 import { budgetReport } from "./budget.js";
 
 const ICONS: Record<StageStatus, string> = {
-  approved: "✔", awaiting_gate: "⏸", failed: "✖", needs_rework: "✖", running: "▶", pending: "·",
+  approved: "✔", awaiting_gate: "⏸", failed: "✖", needs_rework: "✖", running: "▶", pending: "·", skipped: "⤼",
 };
 
 export function buildProgram(dir: string, io: { out: (s: string) => void } = { out: console.log }): Command {
@@ -91,6 +92,12 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
     rejectGate(dir, cfg, stage, opts.notes);
     printStatus(cfg);
   });
+  gate.command("skip <stage>").description("skip a `when: auto` stage (e.g. design for a pure-logic change)")
+    .option("--reason <text>").action((stage: string, opts: { reason?: string }) => {
+      const cfg = requireConfig();
+      skipStage(dir, cfg, stage, "council", opts.reason);
+      printStatus(cfg);
+    });
 
   const stageRunner = (id: string) => async () => {
     const cfg = requireConfig();

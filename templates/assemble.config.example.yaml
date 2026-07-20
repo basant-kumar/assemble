@@ -146,7 +146,7 @@ models:
 # ---------------------------------------------------------------------------
 agents:
   stark:    { profile: fable-deep }      # architect: plan + technical design
-  shuri:    { profile: opus-writer }     # UI/product design (flavor: ui)
+  shuri:    { profile: opus-writer, skills: [ui-ux-pro-max] }  # UI/product design (flavor: ui) — skills travel with shuri
   strange:  { profile: sol-reviewer }    # plan/design reviewer — 14,000,605 futures
   vision:   { profile: luna-worker }     # delta code-review per batch
   danvers:  { profile: gemini-pro }      # final full-tree review, fresh thread
@@ -165,7 +165,7 @@ agents:
 stages:
   plan:          { agent: stark, interactive: true }
   plan-review:   { agent: strange, max_rounds: 3 }
-  design:        { agent: stark, flavor: technical }  # flavor: ui → shuri (UI designer)
+  design:        { agent: stark, flavor: technical, when: auto }  # flavor: ui → shuri · when: auto (skippable when not needed, plan-review ratifies) | always | enabled: false
   design-review: { agent: strange, max_rounds: 3, enabled: true }
   implement:
     workers: [thor, spidey, hulk, hawkeye]            # call-sign pool

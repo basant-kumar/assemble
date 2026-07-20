@@ -1,12 +1,14 @@
 import type { AssembleConfig } from "./config.js";
-import { readLedger, deriveStageStatus, appendEvent } from "./ledger.js";
+import { readLedger, deriveStageStatus, appendEvent, isStageSatisfied } from "./ledger.js";
 import { runStage, type RunStageOpts } from "./engine.js";
 import { checkBudget, BudgetError } from "./budget.js";
 
 export async function runPipeline(dir: string, config: AssembleConfig, opts: RunStageOpts = {}): Promise<{ ran: string[]; stoppedAt: string | null }> {
   const ran: string[] = [];
   for (const stage of config.stages) {
-    if (deriveStageStatus(readLedger(dir), stage) === "approved") continue;
+    // Skip stages that are already satisfied — approved on a prior pass, or
+    // skipped (statically disabled or runtime-skipped).
+    if (isStageSatisfied(deriveStageStatus(readLedger(dir), stage))) continue;
     await runStage(dir, config, stage.id, opts);
     ran.push(stage.id);
 
@@ -33,7 +35,7 @@ export async function runPipeline(dir: string, config: AssembleConfig, opts: Run
     }
 
     const status = deriveStageStatus(readLedger(dir), stage);
-    if (status !== "approved") return { ran, stoppedAt: stage.id };
+    if (!isStageSatisfied(status)) return { ran, stoppedAt: stage.id };
   }
   return { ran, stoppedAt: null };
 }

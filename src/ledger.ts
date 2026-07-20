@@ -5,7 +5,7 @@ import type { StageDef } from "./config.js";
 
 export type LedgerEvent = {
   ts: string;
-  type: "stage_started" | "stage_completed" | "stage_failed" | "gate_approved" | "gate_rejected" | "cost" | "budget_abort";
+  type: "stage_started" | "stage_completed" | "stage_failed" | "gate_approved" | "gate_rejected" | "stage_skipped" | "cost" | "budget_abort";
   stage: string;
   agent?: string;
   worker?: string;
@@ -36,6 +36,9 @@ export function readLedger(dir: string): LedgerEvent[] {
 }
 
 export function deriveStageStatus(events: LedgerEvent[], stage: StageDef): StageStatus {
+  // A statically disabled stage is always skipped; it never runs and never
+  // blocks a downstream gate.
+  if (stage.enabled === false) return "skipped";
   let status: StageStatus = "pending";
   for (const e of events) {
     if (e.stage !== stage.id) continue;
@@ -45,7 +48,14 @@ export function deriveStageStatus(events: LedgerEvent[], stage: StageDef): Stage
       case "stage_failed": status = "failed"; break;
       case "gate_approved": status = "approved"; break;
       case "gate_rejected": status = "needs_rework"; break;
+      case "stage_skipped": status = "skipped"; break;
     }
   }
   return status;
+}
+
+// A stage counts as "satisfied" for the purpose of unblocking a later stage
+// when it is either approved or skipped — both mean "no outstanding work here".
+export function isStageSatisfied(status: StageStatus): boolean {
+  return status === "approved" || status === "skipped";
 }

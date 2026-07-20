@@ -148,18 +148,19 @@ agents:                          # named role → profile or inline binding
   writer:   { profile: fable-deep }
   reviewer: { profile: sol-reviewer }
   worker:   { provider: codex, model: gpt-5.6-luna }
+  designer: { profile: fable-deep, skills: [ui-ux-pro-max] }  # skills travel with the agent (shuri) — loaded wherever it's cast
 
 stages:
   plan:          { agent: writer, interactive: true }
   plan-review:   { agent: reviewer, max_rounds: 3 }
-  design:        { agent: writer, flavor: technical }  # technical | ui | both
+  design:        { agent: designer, flavor: ui, when: auto }   # flavor: technical | ui | both · when: auto | always · enabled: false to disable
   design-review: { agent: reviewer, max_rounds: 3, enabled: true }
   implement:     { agent: worker, parallel: 2 }        # max concurrent workers
   code-review:   { agent: reviewer, max_rounds: 3 }
   release:       { agent: writer, approval: human }    # human | auto
   memory-sync:   { agent: writer }                     # post-release ARCHI update
 
-gates:                           # engine-enforced prerequisites
+gates:                           # engine-enforced prerequisites (auto-pruned)
   implement: [plan-review: APPROVED, design-review: APPROVED]
   release:   [code-review: APPROVED, tests: PASS]
 
@@ -176,8 +177,21 @@ budget:                          # cost caps, enforced by the engine
 Rules:
 
 - zod-validated at load; plain-English errors with YAML path.
-- `enabled: false` on a non-core stage removes it and auto-drops it from
-  downstream gates (hybrid pipeline: 3 commands, config-defined sub-stages).
+- `enabled: false` on a non-core stage removes it **statically** and auto-drops
+  it from downstream gates (hybrid pipeline: 3 commands, config-defined sub-stages).
+- `when: auto` (design default) keeps the stage enabled but lets it be **skipped
+  at runtime when not needed**: stark declares `design: not-needed` in the plan
+  manifest, strange (plan-review) must ratify the skip, and the stage is then
+  recorded `skipped` in the ledger. `when: always` forces the stage to run.
+  An agent can *propose* a skip but never self-grants one — a reviewer/human
+  gate ratifies it, same as any verdict.
+- **Gate prerequisites are auto-pruned**: a required verdict is dropped from a
+  downstream gate whenever its stage is `enabled: false` *or* ratified-`skipped`
+  for this run. So `implement` needs only `plan-review: APPROVED` when design is
+  skipped — the gate never blocks on a verdict that will never be written.
+- Agent `skills:` (e.g. `[ui-ux-pro-max]`) are a normalized knob that travels
+  with the agent into every stage it's cast in; adapters map them to the
+  provider's plugin/skill mechanism and **warn-and-skip** unsupported ones.
 - Impossible gates (referencing disabled/unknown stages) fail at load, not mid-run.
 - Built-in model profiles (context window, cost) ship for known models;
   `assemble models list` shows resolved profiles.
@@ -292,7 +306,11 @@ interface Adapter {
 ## 8. Parallel Implement (Batch DAG + Worktrees)
 
 - Plan docs carry a machine-readable **batch manifest** (YAML frontmatter):
-  `batches: [{id, title, files, depends_on: []}]`.
+  `batches: [{id, title, files, depends_on: [], test_plan: {strategy, cases: []}}]`.
+- **Every batch carries a `test_plan`**: strategy + the cases the implementer must
+  cover. plan-review refuses `APPROVED` if a batch's `test_plan` is missing or
+  inadequate, the worker must satisfy it (the per-batch test/lint gate enforces
+  green), and danvers' final full-tree review verifies coverage matches the plan.
 - **Schema-guided authoring**: the engine hands the plan agent a strict JSON
   schema for the manifest and validates the output immediately with the same
   parse-retry loop as verdicts (one retry with the validation errors, then

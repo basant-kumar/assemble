@@ -1,5 +1,10 @@
 # assemble 🦸
 
+[![npm version](https://img.shields.io/npm/v/@bugbeast/assemble.svg)](https://www.npmjs.com/package/@bugbeast/assemble)
+[![npm downloads](https://img.shields.io/npm/dm/@bugbeast/assemble.svg)](https://www.npmjs.com/package/@bugbeast/assemble)
+[![node](https://img.shields.io/node/v/@bugbeast/assemble.svg)](https://nodejs.org)
+[![license](https://img.shields.io/npm/l/@bugbeast/assemble.svg)](./LICENSE)
+
 **The Avengers, but for your codebase.** A multi-agent dev workflow
 orchestrator: Plan → Design → Implement → Release, with a different AI model
 cast for every role — and gates that agents *cannot* skip, because the state
@@ -115,18 +120,25 @@ next stage refuses to start. A disobedient agent can stall — never skip.
 ## Quick start
 
 ```bash
-npm i -g @assemble/cli             # trademark-safe OSS publish name
-cd your-repo && assemble assemble  # zero-config defaults, or pick a preset
-/assemble-plan "add dark mode"     # in Claude Code — stark (architect) plans,
-                                   #   strange (plan/design reviewer) reviews
-/assemble-implement                # batched, gated, parallel if configured
-/assemble-release                  # cap (release) ships it on your order,
-                                   #   jarvis (memory) remembers
-assemble status                    # mission board · assemble report →
-                                   #   pepper (ledger)'s books
+npm i -g @bugbeast/assemble        # installs the `assemble` command
+cd your-repo && assemble init      # scaffold assemble.config.yaml (MCU theme)
+assemble run                       # run the full pipeline serially:
+                                   #   stark (architect) plans → strange (plan/
+                                   #   design reviewer) reviews → thor (implementer)
+                                   #   builds in gated batches → cap (release) ships
+assemble status                    # mission board · who's working
+assemble cost                      # token cost by worker and stage
+assemble budget                    # per-scope spend vs caps · pepper (ledger)'s books
 ```
 
-`assemble assemble` also writes a workflow note into `CLAUDE.md`/`AGENTS.md`,
+Human gate points pause the run for your decision:
+
+```bash
+assemble gate approve <stage>      # World Security Council says go
+assemble gate reject  <stage>      # send it back for rework
+```
+
+`assemble init` also writes a workflow note into `CLAUDE.md`/`AGENTS.md`,
 so any agent that opens the repo discovers the pipeline on its own.
 
 Example board mid-mission:

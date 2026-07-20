@@ -4,3 +4,6 @@
 
 # dependencies
 node_modules/
+
+# build output (shipped to npm via "files", not git)
+dist/

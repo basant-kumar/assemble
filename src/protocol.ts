@@ -3,7 +3,7 @@ export const PROTOCOL_VERSION = 1;
 export const VERDICTS = ["APPROVED", "REQUEST_CHANGES", "BLOCKED"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
-export const STAGE_STATUSES = ["pending", "running", "awaiting_gate", "approved", "needs_rework", "failed"] as const;
+export const STAGE_STATUSES = ["pending", "running", "awaiting_gate", "approved", "needs_rework", "failed", "skipped"] as const;
 export type StageStatus = (typeof STAGE_STATUSES)[number];
 
 export const RESERVED_STAGE_IDS = ["run","init","status","gate","report","models","config","clean","adhoc","resume"] as const;
