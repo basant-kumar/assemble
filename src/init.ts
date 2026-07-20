@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync, cpSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, cpSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ConfigError, DEFAULT_ARCHI_PATH } from "./config.js";
@@ -13,6 +13,35 @@ const BUNDLED_SKILL_DIR = join(HERE, "..", "skills", "assemble");
 
 /** Where the skill is copied inside the target repo, relative to its root. */
 export const SKILL_PATH = ".claude/skills/assemble";
+
+/** Codex reads `AGENTS.md` from the repo root (the codex analog of a Claude
+ * skill). We drop a marked block that points codex workers at the same
+ * protocol, so a stage with `provider: codex` behaves like a `claude` one. */
+export const AGENTS_PATH = "AGENTS.md";
+const AGENTS_START = "<!-- assemble:start -->";
+const AGENTS_END = "<!-- assemble:end -->";
+
+/** Wrap the bundled AGENTS.md body in idempotency markers. */
+function assembleAgentsBlock(): string {
+  const body = readFileSync(join(BUNDLED_SKILL_DIR, "AGENTS.md"), "utf8").trimEnd();
+  return `${AGENTS_START}\n${body}\n${AGENTS_END}`;
+}
+
+/** Insert (or refresh) the assemble block in a repo-root AGENTS.md without
+ * clobbering the user's own content. Returns the file's new text. */
+export function mergeAgentsMd(existing: string | null, block: string): string {
+  if (existing == null) return block + "\n";
+  const start = existing.indexOf(AGENTS_START);
+  const end = existing.indexOf(AGENTS_END);
+  if (start !== -1 && end !== -1 && end > start) {
+    // Replace the stale assemble block in place, preserving surrounding content.
+    const before = existing.slice(0, start);
+    const after = existing.slice(end + AGENTS_END.length);
+    return before + block + after;
+  }
+  // No assemble block yet — append after the user's content.
+  return existing.trimEnd() + "\n\n" + block + "\n";
+}
 
 /** The full seeded default config (all roster heroes pre-configured). */
 export const DEFAULT_CONFIG = defaultConfigYaml("MyApp");
@@ -68,6 +97,13 @@ export function initProject(dir: string): { created: string[] } {
     rmSync(skillDest, { recursive: true, force: true });
     cpSync(BUNDLED_SKILL_DIR, skillDest, { recursive: true });
     created.push(SKILL_PATH + "/");
+
+    // Codex analog: merge an assemble block into repo-root AGENTS.md so
+    // `provider: codex` workers get the same protocol. Preserves user content.
+    const agentsDest = join(dir, AGENTS_PATH);
+    const prior = existsSync(agentsDest) ? readFileSync(agentsDest, "utf8") : null;
+    writeFileSync(agentsDest, mergeAgentsMd(prior, assembleAgentsBlock()));
+    created.push(prior == null ? AGENTS_PATH : AGENTS_PATH + " (updated)");
   }
 
   // Architectural memory is opt-in (memory.enabled: false by default), so init
