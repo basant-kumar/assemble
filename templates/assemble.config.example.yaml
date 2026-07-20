@@ -1,11 +1,13 @@
 # ============================================================================
-# fury.config.example.yaml — copy-paste catalog
+# assemble.config.example.yaml — copy-paste catalog
 # ----------------------------------------------------------------------------
-# Everything here is OPTIONAL. Your real fury.config.yaml only needs the
+# Everything here is OPTIONAL. Your real assemble.config.yaml only needs the
 # overrides you care about. Copy any block below into it and adjust.
 # Hero names are just agent-role keys — rename them if you must, but why
-# would you. Verify pricing ($/Mtok) against your provider's current rates —
-# it only feeds pepper's ledger, never billing.
+# would you. Not affiliated with Marvel or Disney — the MCU roster is only
+# the default, swappable display theme (protocol constants are unthemed).
+# Verify pricing ($/Mtok) against your provider's current rates —
+# it only feeds pepper (ledger)'s books, never billing.
 # ============================================================================
 
 project:
@@ -17,7 +19,8 @@ project:
 # ---------------------------------------------------------------------------
 # PRESETS — pick one and stop reading, or go granular below.
 #   solo — one model plays every hero (cheapest, no cross-check)
-#   duo  — stark writes, strange reviews cross-provider (TRIP's proven setup)
+#   duo  — stark (architect) writes, strange (plan/design reviewer) reviews
+#          cross-provider (TRIP's proven setup)
 #   full — the whole roster, each hero tuned separately
 # ---------------------------------------------------------------------------
 mode: duo
@@ -137,8 +140,9 @@ models:
 
 # ---------------------------------------------------------------------------
 # THE ROSTER — hero roles bound to model profiles. Recast one hero here and
-# every stage they work changes. fury/pepper/heimdall are the engine itself
-# (deterministic code), so they never appear here.
+# every stage they work changes. fury (orchestrator), pepper (ledger) and
+# heimdall (gates) are the engine itself (deterministic code), so they never
+# appear here.
 # ---------------------------------------------------------------------------
 agents:
   stark:    { profile: fable-deep }      # architect: plan + technical design
@@ -161,7 +165,7 @@ agents:
 stages:
   plan:          { agent: stark, interactive: true }
   plan-review:   { agent: strange, max_rounds: 3 }
-  design:        { agent: stark, flavor: technical }  # flavor: ui → shuri
+  design:        { agent: stark, flavor: technical }  # flavor: ui → shuri (UI designer)
   design-review: { agent: strange, max_rounds: 3, enabled: true }
   implement:
     workers: [thor, spidey, hulk, hawkeye]            # call-sign pool
@@ -170,24 +174,24 @@ stages:
   code-review-full: { agent: danvers }                # fresh-thread final pass
   # Example inline pin — cheap model for just this stage:
   # code-review: { provider: codex, model: gpt-5-codex-mini, max_rounds: 3 }
-  release:       { agent: cap, approval: human }      # 🏛️ Council signs off
+  release:       { agent: cap, approval: human }      # 🏛️ Council (human) signs off
   memory-sync:   { agent: jarvis }
 
-gates:                                                 # 🌈 heimdall's checklist
+gates:                                                 # 🌈 heimdall (gates) — checklist
   implement: [plan-review: APPROVED, design-review: APPROVED]
   release:   [code-review: APPROVED, tests: PASS]
 
-memory:                                                # 🧠 jarvis's memory
-  file: docs/fury/ARCHI.md
+memory:                                                # 🧠 jarvis (memory)
+  file: docs/assemble/ARCHI.md
   max_tokens: 8k
 
-budget:                                                # 💼 pepper's card
+budget:                                                # 💼 pepper (ledger) — the card
   per_run: 25                    # $; warn at 80%
   action: pause                  # warn | pause — pause = card frozen
 
 # ---------------------------------------------------------------------------
 # One-off overrides without editing config:
-#   FURY_STAGE_code-review_MODEL=gemini-flash fury stage run code-review
-# Ad-hoc off-book mission (🥷 ronin — never mutates run state):
-#   fury stage run code-review --adhoc --target src/auth/
+#   ASSEMBLE_STAGE_code-review_MODEL=gemini-flash assemble stage run code-review
+# Ad-hoc off-book mission — 🥷 ronin (ad-hoc), never mutates run state:
+#   assemble stage run code-review --adhoc --target src/auth/
 # ---------------------------------------------------------------------------

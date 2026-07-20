@@ -1,4 +1,4 @@
-# Fury — Multi-Agent Dev Workflow Orchestrator (Design Spec)
+# Assemble — Multi-Agent Dev Workflow Orchestrator (Design Spec)
 
 **Date:** 2026-07-20
 **Status:** Approved design, pending implementation plan
@@ -13,7 +13,7 @@ only copilot is Codex CLI, gates (`APPROVED`, `REQUEST_CHANGES`) are magic strin
 the agent is *trusted* to honor, state is flat files inside the skills directory,
 and there is no design stage, no parallelism, no cost tracking.
 
-**Fury** keeps TRIP's virtues (few commands, ARCHI.md memory, writer/reviewer
+**Assemble** keeps TRIP's virtues (few commands, ARCHI.md memory, writer/reviewer
 separation) and replaces its trust-based orchestration with a real CLI-enforced
 state machine.
 
@@ -38,22 +38,22 @@ Goals:
 **Approach: split driver.** Interactive stages (plan drafting, design
 exploration — where the human converses) run in the user's Claude Code session
 via thin skills. Mechanical stages (review loops, implement batches, gates,
-release checks) are executed by the `fury` CLI. The state machine lives in the
+release checks) are executed by the `assemble` CLI. The state machine lives in the
 CLI in both cases: a skill cannot advance a stage without a recorded verdict,
-because the next `fury stage run` hard-fails on a missing/failed gate.
+because the next `assemble stage run` hard-fails on a missing/failed gate.
 
-- **Distribution:** npm-installed TypeScript CLI (`fury`) + thin Claude Code
+- **Distribution:** npm-installed TypeScript CLI (`assemble`) + thin Claude Code
   skills. Node is assumed present (Claude Code users have it).
 - **The conductor is not special:** the interactive session is just the agent
-  handling interactive stages. A future `fury run --headless` can hand those
+  handling interactive stages. A future `assemble run --headless` can hand those
   to a claude adapter without architectural change.
 
-### Repo layout (the fury project itself)
+### Repo layout (the assemble project itself)
 
 ```
-fury/
+assemble/
 ├── packages/cli/            # orchestrator CLI (TypeScript, zod schemas)
-│   ├── src/config/          # fury.config.yaml loader + validation + presets
+│   ├── src/config/          # assemble.config.yaml loader + validation + presets
 │   ├── src/stages/          # stage state machine, gate enforcement
 │   ├── src/adapters/        # claude / codex / generic adapters
 │   ├── src/verdicts/        # structured verdict schemas + parsing
@@ -63,47 +63,47 @@ fury/
 └── templates/               # config starter, per-stage prompt templates
 ```
 
-### Per-project footprint after `fury assemble`
+### Per-project footprint after `assemble assemble`
 
 ```
 your-repo/
-├── fury.config.yaml       # optional overrides: stages, agents, models, gates
-├── .fury/                 # runs/, sessions/, worktrees/, ledger.ndjson
-├── docs/fury/             # plans, designs, reviews, ARCHI.md
+├── assemble.config.yaml       # optional overrides: stages, agents, models, gates
+├── .assemble/                 # runs/, sessions/, worktrees/, ledger.ndjson
+├── docs/assemble/             # plans, designs, reviews, ARCHI.md
 └── .claude/skills/          # the 3 thin skills
 ```
 
-`.fury/` is gitignored except `ledger.ndjson` (project's choice at init).
+`.assemble/` is gitignored except `ledger.ndjson` (project's choice at init).
 
 ### Components (crisp boundaries)
 
 | Component | One purpose | Consumed via |
 |---|---|---|
-| Config | Load/validate/resolve `fury.config.yaml` + presets | typed accessor module |
-| Stage engine | State machine; only writer of stage status | `fury stage run`, `fury gate *` |
+| Config | Load/validate/resolve `assemble.config.yaml` + presets | typed accessor module |
+| Stage engine | State machine; only writer of stage status | `assemble stage run`, `assemble gate *` |
 | Adapters | Uniform provider invocation | `Adapter` interface |
 | Verdicts | JSON verdict schemas + parse/retry | verdict parser |
-| Ledger | Append-only accounting | `fury status`, `fury report` |
+| Ledger | Append-only accounting | `assemble status`, `assemble report` |
 | Prompt templates | Per-stage `.tpl`, safe substitution, user-overridable | template loader |
 
 ## 3. User Experience
 
-- `fury assemble` — interactive setup; working defaults for everything; generates
+- `assemble assemble` — interactive setup; working defaults for everything; generates
   minimal config, docs folders, skills, seed ARCHI.md.
-- **3 skill commands**: `/fury-plan`, `/fury-implement`, `/fury-release`.
+- **3 skill commands**: `/assemble-plan`, `/assemble-implement`, `/assemble-release`.
 - **Presets** (`mode:`): `solo` (one model everywhere), `duo` (writer +
   cross-provider reviewer), `full` (distinct model per stage). Users graduate to
   per-stage tuning only when they want it.
 - **Direct stage invocation**: any stage runs standalone.
   - *Pipeline mode* (default in an active run): gates enforced.
-  - *Ad-hoc mode*: `fury stage run code-review --adhoc [--target <path|range>]`
+  - *Ad-hoc mode*: `assemble stage run code-review --adhoc [--target <path|range>]`
     — no prerequisites, any target, ledger-tagged `adhoc`, never mutates run
     state. Replaces TRIP's `/TRIP-review`, `/TRIP-test`, `/codex-ask` with one
     uniform mechanism.
-- `fury status` — "where am I, what's approved, what's next" in one glance.
-- `fury config show --resolved` — fully expanded config; no magic.
+- `assemble status` — "where am I, what's approved, what's next" in one glance.
+- `assemble config show --resolved` — fully expanded config; no magic.
 
-## 4. Configuration Schema (`fury.config.yaml`)
+## 4. Configuration Schema (`assemble.config.yaml`)
 
 Everything optional; defaults ship for known models. Two-level indirection
 `stages → agents → providers` so one line changes every review stage, while any
@@ -164,13 +164,13 @@ gates:                           # engine-enforced prerequisites
   release:   [code-review: APPROVED, tests: PASS]
 
 memory:
-  file: docs/fury/ARCHI.md
+  file: docs/assemble/ARCHI.md
   max_tokens: 8k                 # exceeds → automatic compaction pass
 
 budget:                          # cost caps, enforced by the engine
   per_run: 25                    # $; warn at 80%, act at 100%
   per_stage: { code-review: 5 }  # optional finer-grained caps
-  action: pause                  # warn | pause (pause → `fury run resume` after human review)
+  action: pause                  # warn | pause (pause → `assemble run resume` after human review)
 ```
 
 Rules:
@@ -180,8 +180,8 @@ Rules:
   downstream gates (hybrid pipeline: 3 commands, config-defined sub-stages).
 - Impossible gates (referencing disabled/unknown stages) fail at load, not mid-run.
 - Built-in model profiles (context window, cost) ship for known models;
-  `fury models list` shows resolved profiles.
-- Env-var overrides (`TROUPE_STAGE_<stage>_MODEL`, etc.) for one-off runs.
+  `assemble models list` shows resolved profiles.
+- Env-var overrides (`ASSEMBLE_STAGE_<stage>_MODEL`, etc.) for one-off runs.
 
 ## 5. Multi-Agent Model
 
@@ -190,9 +190,9 @@ engine with a role prompt template, model+knobs, and a sandbox level from config
 
 ```
               conductor (interactive Claude session, thin skills)
-                              │  calls `fury`
+                              │  calls `assemble`
                               ▼
-                    fury CLI (stage engine)
+                  assemble CLI (stage engine)
         ┌───────────────┬──────────────────┐
         ▼               ▼                  ▼
   writer agent    reviewer agent     worker agents ×N (parallel implement)
@@ -202,7 +202,7 @@ engine with a role prompt template, model+knobs, and a sandbox level from config
 
 Mechanics:
 
-1. **Persistent sessions** — `.fury/sessions/` stores each agent's
+1. **Persistent sessions** — `.assemble/sessions/` stores each agent's
    session/thread id. Review loops resume the same reviewer thread across rounds
    (it remembers earlier findings); the writer resumes its own session to apply
    fixes. Adapters abstract resume (`--resume` for claude, thread id for codex,
@@ -217,7 +217,7 @@ Mechanics:
 ## 6. Stage State Machine & Verdicts
 
 A **run** = one feature moving through the pipeline.
-`fury run start "dark-mode"` creates `.fury/runs/<date>-dark-mode/` with a
+`assemble run start "dark-mode"` creates `.assemble/runs/<date>-dark-mode/` with a
 transactional JSON state file (write-temp + rename).
 
 Stage statuses: `pending → running → needs_review → approved | failed | skipped`.
@@ -242,12 +242,12 @@ The engine is the only writer; every transition appends to the ledger.
 - Reviewer prompts demand JSON output; on parse failure: one retry with a
   "fix your JSON" message, then verdict `BLOCKED`.
 - `max_rounds` exhausted → stage status `needs_review`; human decides:
-  `fury gate approve <stage>` / `fury gate reject <stage>`. Overrides are
+  `assemble gate approve <stage>` / `assemble gate reject <stage>`. Overrides are
   always recorded in the ledger as `approvedBy: human`.
 - Gates are pure checks against run state; refusal messages say exactly which
   verdict is missing and how to obtain it.
 - **Interactive stages use the same machinery**: plan and design take their
-  verdict from the human — `fury gate approve plan` records
+  verdict from the human — `assemble gate approve plan` records
   `{verdict: APPROVED, approvedBy: human}` with the identical schema and ledger
   entry as agent verdicts. One uniform state machine, no special-casing.
 
@@ -300,10 +300,10 @@ interface Adapter {
 - `depends_on` may be omitted: the engine **auto-derives dependencies from
   file-list overlaps** (two batches touching the same file are serialized)
   rather than failing. Explicit deps are validated: no cycles, no unknown ids.
-- `fury plan validate` runs the full manifest check standalone, so a human
+- `assemble plan validate` runs the full manifest check standalone, so a human
   editing the plan gets the same guarantees as the agent.
 - Execution: engine tops up to `parallel: N` workers. Per batch:
-  worktree `.fury/worktrees/<run>/<batch-id>` branched off the run branch →
+  worktree `.assemble/worktrees/<run>/<batch-id>` branched off the run branch →
   worker implements → engine runs test/lint/typecheck in the worktree →
   **delta code-review** (same loop mechanics as §6) → merge into run branch in
   dependency order.
@@ -315,16 +315,16 @@ interface Adapter {
 
 ## 9. Ledger, Cost Tracking & Memory
 
-- `.fury/ledger.ndjson`, append-only, one entry per agent invocation and
+- `.assemble/ledger.ndjson`, append-only, one entry per agent invocation and
   state transition: `{ts, run, stage, round, agent, provider, model, tokensIn,
   tokensOut, cost, durationMs, outcome, approvedBy}`.
-- `fury report [--run X | --all]`: cost/tokens per stage and per model, review
+- `assemble report [--run X | --all]`: cost/tokens per stage and per model, review
   rounds per stage, human overrides — the data for A/B-ing model configs.
 - **Budget enforcement**: the engine checks the ledger against `budget:` before
   every agent invocation — warn at 80%, `warn|pause` at cap. A paused run keeps
-  all state and resumes with `fury run resume` after human review. Ad-hoc
+  all state and resumes with `assemble run resume` after human review. Ad-hoc
   invocations count against the run budget too.
-- **Cost posture** (how fury stays cheap by construction):
+- **Cost posture** (how assemble stays cheap by construction):
   - Reviewers receive **delta diffs + only the relevant docs**, never
     whole-repo context dumps.
   - Mechanical stages run in **fresh minimal-context threads** instead of one
@@ -333,7 +333,7 @@ interface Adapter {
     delta reviews, the expensive one only for plan review).
   - Native session resume on claude/codex means loops add zero replay overhead;
     generic providers use token-capped digests (§7).
-- **ARCHI.md** kept as long-term architectural memory at `docs/fury/ARCHI.md`.
+- **ARCHI.md** kept as long-term architectural memory at `docs/assemble/ARCHI.md`.
   Post-release `memory-sync` stage: agent receives release diff + ARCHI.md,
   updates stale claims, reports drift findings. Token budget breach triggers an
   automatic compaction pass (TRIP's `/TRIP-compact`, now a stage, not a chore).
@@ -341,9 +341,9 @@ interface Adapter {
 ## 10. Error Handling & Recovery
 
 - **Config**: validated at load; plain-English errors with YAML path.
-- **Crash recovery**: transactional run state; `fury run resume` re-enters at
+- **Crash recovery**: transactional run state; `assemble run resume` re-enters at
   the last incomplete stage; sessions re-attached where supported, else replayed.
-- **Orphans**: `fury clean` removes dead worktrees/stale sessions; the engine
+- **Orphans**: `assemble clean` removes dead worktrees/stale sessions; the engine
   refuses to start a batch on an uncleaned worktree, with the fix-it command in
   the error message.
 - **Instruction-following guarantee**: skills hold no state; all mutations go
@@ -375,7 +375,7 @@ interface Adapter {
 
 ## 13. Out of Scope (v1)
 
-- Headless full-pipeline mode (`fury run --headless`) — architecture permits,
+- Headless full-pipeline mode (`assemble run --headless`) — architecture permits,
   not built.
 - Agent auto-resolution of merge conflicts.
 - Web dashboard (ledger is the data source when wanted).
@@ -392,8 +392,10 @@ interface Adapter {
 | Providers v1 | claude, codex first-class; gemini/opencode via generic |
 | Language | TypeScript/Node, npm distribution |
 | v1 scope | Parallel batches + cost tracking + drift detection (phased) |
-| Name | `fury` — MCU theme: the Director who assembles and orchestrates but never fights (writes no code) |
+| Name | `assemble` — generic verb, open-source/trademark-safe, still evokes "Avengers, Assemble!". Renamed from `fury`; Fury (orchestrator) remains the orchestrator *character's* display name inside the default theme — the Director who assembles and orchestrates but never fights (writes no code) |
+| Default theme | MCU character roster kept as the default, fully swappable display theme, with an explicit non-affiliation disclaimer (not affiliated with, endorsed by, or sponsored by Marvel or Disney) |
+| UI display convention | Character names render as `Name (role)` in all user-facing output (roster tables, CLI output, diagrams, catalog comments) so non-MCU users understand responsibilities |
 | Cost control | Budget caps (warn/pause) + delta reviews + per-stage cheap-model routing + native resume; rolling digests for resume-less providers |
-| Batch manifest trust | Schema-guided authoring with verdict-style parse-retry; deps auto-derived from file overlaps; `fury plan validate` |
-| Naming layer | Hero names are agent-role keys + UX flavor only (roster: stark, shuri, strange, vision, danvers, thor, hulk, spidey, hawkeye, cap, jarvis; engine components: pepper=ledger, heimdall=gates, ronin=adhoc, Damage Control=clean; human=World Security Council). Protocol constants (stage ids, verdicts, ledger fields) stay unthemed so tooling never depends on flavor |
-| Trademark | Marvel names fine for personal/internal use; rename the published npm package if ever distributed publicly |
+| Batch manifest trust | Schema-guided authoring with verdict-style parse-retry; deps auto-derived from file overlaps; `assemble plan validate` |
+| Naming layer | Hero names are agent-role keys + UX flavor only (roster: stark (architect), shuri (UI designer), strange (plan/design reviewer), vision (code reviewer), danvers (final reviewer), thor (implementer), hulk (refactorer), spidey (small batches), hawkeye (minor edits), cap (release), jarvis (memory); engine components: fury (orchestrator), pepper (ledger), heimdall (gates), ronin (ad-hoc), Damage Control (cleanup); human = World Security Council). Protocol constants (stage ids, verdicts, ledger fields) stay unthemed so tooling never depends on flavor |
+| Trademark | Tool/CLI/package/config/env branding renamed to `assemble` (trademark-safe for open-source distribution). MCU character names remain only as the default swappable display theme, with a non-affiliation disclaimer; not affiliated with Marvel or Disney |
