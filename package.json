@@ -30,6 +30,8 @@
   },
   "files": [
     "dist",
+    "skills",
+    "scripts/install-skill.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -39,6 +41,8 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
+    "postinstall": "node scripts/install-skill.mjs",
+    "install-skill": "node scripts/install-skill.mjs",
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
