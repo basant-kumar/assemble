@@ -1,10 +1,11 @@
 # ============================================================================
-# troupe.config.example.yaml — copy-paste catalog
+# fury.config.example.yaml — copy-paste catalog
 # ----------------------------------------------------------------------------
-# Everything here is OPTIONAL. Your real troupe.config.yaml only needs the
+# Everything here is OPTIONAL. Your real fury.config.yaml only needs the
 # overrides you care about. Copy any block below into it and adjust.
-# Verify pricing ($/Mtok) against your provider's current rates — it only
-# feeds the cost ledger, never billing.
+# Hero names are just agent-role keys — rename them if you must, but why
+# would you. Verify pricing ($/Mtok) against your provider's current rates —
+# it only feeds pepper's ledger, never billing.
 # ============================================================================
 
 project:
@@ -15,8 +16,11 @@ project:
 
 # ---------------------------------------------------------------------------
 # PRESETS — pick one and stop reading, or go granular below.
+#   solo — one model plays every hero (cheapest, no cross-check)
+#   duo  — stark writes, strange reviews cross-provider (TRIP's proven setup)
+#   full — the whole roster, each hero tuned separately
 # ---------------------------------------------------------------------------
-mode: duo          # solo | duo | full
+mode: duo
 
 # ---------------------------------------------------------------------------
 # PROVIDERS — how each CLI is launched. claude/codex are built in.
@@ -72,7 +76,7 @@ models:
     speed: balanced
     cost: { in: 3, out: 15 }
 
-  haiku-fast:                    # cheap: delta reviews, memory-sync, triage
+  haiku-fast:                    # cheap: small batches, memory-sync, triage
     provider: claude
     model: haiku-4.5
     thinking: off
@@ -106,7 +110,7 @@ models:
     cost: { in: 0.25, out: 1 }
 
   # ---- Gemini ----
-  gemini-pro:                    # alternative reviewer, huge context
+  gemini-pro:                    # huge context: full-tree reviews
     provider: gemini
     model: gemini-3-pro
     context_window: 1m
@@ -132,42 +136,58 @@ models:
     timeout: 10m
 
 # ---------------------------------------------------------------------------
-# AGENT ROLES — bind roles to profiles. Edit ONE line here to change every
-# stage that uses the role.
+# THE ROSTER — hero roles bound to model profiles. Recast one hero here and
+# every stage they work changes. fury/pepper/heimdall are the engine itself
+# (deterministic code), so they never appear here.
 # ---------------------------------------------------------------------------
 agents:
-  writer:   { profile: fable-deep }
-  reviewer: { profile: sol-reviewer }
-  worker:   { profile: sonnet-worker }
+  stark:    { profile: fable-deep }      # architect: plan + technical design
+  shuri:    { profile: opus-writer }     # UI/product design (flavor: ui)
+  strange:  { profile: sol-reviewer }    # plan/design reviewer — 14,000,605 futures
+  vision:   { profile: luna-worker }     # delta code-review per batch
+  danvers:  { profile: gemini-pro }      # final full-tree review, fresh thread
+  thor:     { profile: opus-writer }     # heavy implementation batches
+  hulk:     { profile: sonnet-worker }   # big refactors — smash carefully
+  spidey:   { profile: haiku-fast }      # fast small batches
+  hawkeye:  { profile: codex-mini }      # precision minor edits, never misses
+  cap:      { profile: sonnet-worker }   # release notes; ship order = human's
+  jarvis:   { profile: haiku-fast }      # ARCHI.md memory-sync + compaction
 
 # ---------------------------------------------------------------------------
-# STAGES — any stage can use a role, a profile, or an inline binding.
+# STAGES — cast heroes into stages. Any stage also accepts an inline binding.
+# `workers:` lists the call-sign pool for parallel batches; the engine assigns
+# batches to heroes in order (heavy batches first to the strongest).
 # ---------------------------------------------------------------------------
 stages:
-  plan:          { agent: writer, interactive: true }
-  plan-review:   { agent: reviewer, max_rounds: 3 }
-  design:        { agent: writer, flavor: technical }   # technical | ui | both
-  design-review: { agent: reviewer, max_rounds: 3, enabled: true }
-  implement:     { agent: worker, parallel: 2 }
-  code-review:   { agent: reviewer, max_rounds: 3 }
+  plan:          { agent: stark, interactive: true }
+  plan-review:   { agent: strange, max_rounds: 3 }
+  design:        { agent: stark, flavor: technical }  # flavor: ui → shuri
+  design-review: { agent: strange, max_rounds: 3, enabled: true }
+  implement:
+    workers: [thor, spidey, hulk, hawkeye]            # call-sign pool
+    parallel: 2
+  code-review:   { agent: vision, max_rounds: 3 }     # delta reviews per batch
+  code-review-full: { agent: danvers }                # fresh-thread final pass
   # Example inline pin — cheap model for just this stage:
   # code-review: { provider: codex, model: gpt-5-codex-mini, max_rounds: 3 }
-  release:       { agent: writer, approval: human }
-  memory-sync:   { profile: haiku-fast }
+  release:       { agent: cap, approval: human }      # 🏛️ Council signs off
+  memory-sync:   { agent: jarvis }
 
-gates:
+gates:                                                 # 🌈 heimdall's checklist
   implement: [plan-review: APPROVED, design-review: APPROVED]
   release:   [code-review: APPROVED, tests: PASS]
 
-memory:
-  file: docs/troupe/ARCHI.md
+memory:                                                # 🧠 jarvis's memory
+  file: docs/fury/ARCHI.md
   max_tokens: 8k
 
-budget:
+budget:                                                # 💼 pepper's card
   per_run: 25                    # $; warn at 80%
-  action: pause                  # warn | pause
+  action: pause                  # warn | pause — pause = card frozen
 
 # ---------------------------------------------------------------------------
 # One-off overrides without editing config:
-#   TROUPE_STAGE_code-review_MODEL=gemini-flash troupe stage run code-review
+#   FURY_STAGE_code-review_MODEL=gemini-flash fury stage run code-review
+# Ad-hoc off-book mission (🥷 ronin — never mutates run state):
+#   fury stage run code-review --adhoc --target src/auth/
 # ---------------------------------------------------------------------------
