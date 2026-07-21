@@ -138,15 +138,20 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
       printStatus(cfg);
     });
 
-  const stageRunner = (id: string) => async () => {
+  const stageRunner = (id: string, opts: { fresh?: boolean } = {}) => async () => {
     const cfg = requireConfig();
-    await runStage(dir, cfg, id, { log: io.out });
+    await runStage(dir, cfg, id, { log: io.out, resume: opts.fresh ? false : undefined });
     printStatus(cfg);
   };
-  program.command("stage").description("explicit long-form stage invocation")
-    .command("run <id>").action((id: string) => stageRunner(id)());
+  const withResumeFlags = (c: Command) => c
+    .option("--resume", "resume the reviewer's prior thread (the default for review stages)")
+    .option("--fresh", "start a fresh reviewer thread instead of resuming the prior one");
+  withResumeFlags(program.command("stage").description("explicit long-form stage invocation")
+    .command("run <id>"))
+    .action((id: string, opts: { fresh?: boolean }) => stageRunner(id, opts)());
   for (const s of config?.stages ?? [])
-    program.command(s.id).description(`run stage '${s.id}' — ${renderAgent(s.agent, config!)}`).action(stageRunner(s.id));
+    withResumeFlags(program.command(s.id).description(`run stage '${s.id}' — ${renderAgent(s.agent, config!)}`))
+      .action((opts: { fresh?: boolean }) => stageRunner(s.id, opts)());
 
   return program;
 }

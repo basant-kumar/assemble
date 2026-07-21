@@ -14,6 +14,11 @@ export type RunOpts = {
   // the adapter continues that conversation (with its accumulated findings)
   // instead of starting fresh. Inert on adapters that don't support resume.
   resumeSessionId?: string;
+  // Review stages are read-only (they emit a verdict, never write). The engine
+  // sets this so sandbox-capable providers (codex) can drop to a read-only
+  // sandbox; implementers get a workspace-write sandbox. Inert on providers
+  // without a sandbox.
+  readOnly?: boolean;
 };
 // `sessionId` is the provider's thread/session id, captured so a later run can
 // resume the same conversation (see resumeSessionId). Undefined when the
@@ -70,23 +75,48 @@ export function claudeAdapter(bin = "claude"): Adapter {
   };
 }
 
-type CodexEvent = { type?: string; text?: string; thread_id?: string; input_tokens?: number; output_tokens?: number };
+type CodexUsage = { input_tokens?: number; output_tokens?: number };
+type CodexItem = { type?: string; text?: string; message?: string };
+type CodexEvent = {
+  type?: string;
+  text?: string;
+  message?: string;
+  thread_id?: string;
+  input_tokens?: number; // legacy token_count schema
+  output_tokens?: number; // legacy token_count schema
+  usage?: CodexUsage; // turn.completed schema
+  item?: CodexItem; // item.completed schema
+  error?: { message?: string }; // turn.failed schema
+};
 
 export function codexAdapter(bin = "codex"): Adapter {
   return {
     name: "codex",
-    async run({ prompt, model, cwd, effort, timeoutMs, resumeSessionId }) {
+    async run({ prompt, model, cwd, effort, timeoutMs, resumeSessionId, readOnly }) {
       // Resume the prior thread so re-review keeps its accumulated findings.
-      // `codex exec resume <id>` inherits the original session's sandbox and
-      // does not accept --sandbox/--color.
+      // `codex exec resume <id>` rejects --sandbox, but both subcommands accept
+      // `-c` config overrides and --skip-git-repo-check, so we drive the sandbox
+      // and approval policy through those uniformly.
       const args = resumeSessionId
         ? ["exec", "resume", resumeSessionId, "--json", "--model", model]
         : ["exec", "--json", "--model", model];
+      // Run fully non-interactively: never prompt for approval (otherwise codex
+      // blocks waiting on a human and the run hangs). Reviewers get a read-only
+      // sandbox; implementers get workspace-write.
+      args.push("-c", `approval_policy="never"`);
+      args.push("-c", `sandbox_mode="${readOnly ? "read-only" : "workspace-write"}"`);
+      args.push("--skip-git-repo-check");
       if (effort) args.push("-c", `model_reasoning_effort="${effort}"`);
       args.push(prompt);
       const stdout = await spawn(bin, args, cwd, { timeoutMs });
       const lines = stdout.trim().split("\n").filter(Boolean);
-      let output = "";
+      // Codex has two NDJSON schemas across versions: the legacy flat one
+      // (`message` / `token_count`) and the current item/turn one
+      // (`item.completed` with an `agent_message` item, `turn.completed` with
+      // `usage`). Support both. For the item schema the final agent_message is
+      // the answer, so we keep the last one rather than concatenating preambles.
+      let legacyOutput = "";
+      let lastAgentMessage: string | undefined;
       let tokensIn = 0;
       let tokensOut = 0;
       let sessionId: string | undefined;
@@ -94,17 +124,30 @@ export function codexAdapter(bin = "codex"): Adapter {
         let event: CodexEvent;
         try { event = JSON.parse(line); }
         catch { throw new AdapterError(`codex returned a non-JSON event line: ${line.slice(0, 200)}`); }
+        // Surface fatal failures instead of returning empty output.
+        if (event.type === "error")
+          throw new AdapterError(`codex run failed: ${event.message ?? line.slice(0, 200)}`);
+        if (event.type === "turn.failed")
+          throw new AdapterError(`codex turn failed: ${event.error?.message ?? line.slice(0, 200)}`);
         // Capture the thread id from the first thread.started event so a later
         // run can resume this conversation.
         if (event.type === "thread.started" && typeof event.thread_id === "string" && !sessionId)
           sessionId = event.thread_id;
-        if (event.type === "message" && typeof event.text === "string") output += event.text;
+        // Legacy flat message schema.
+        if (event.type === "message" && typeof event.text === "string") legacyOutput += event.text;
         if (event.type === "token_count") {
           tokensIn = Number(event.input_tokens ?? tokensIn);
           tokensOut = Number(event.output_tokens ?? tokensOut);
         }
+        // Current item/turn schema.
+        if (event.type === "item.completed" && event.item?.type === "agent_message" && typeof event.item.text === "string")
+          lastAgentMessage = event.item.text;
+        if (event.type === "turn.completed" && event.usage) {
+          tokensIn = Number(event.usage.input_tokens ?? tokensIn);
+          tokensOut = Number(event.usage.output_tokens ?? tokensOut);
+        }
       }
-      return { output, tokensIn, tokensOut, sessionId };
+      return { output: lastAgentMessage ?? legacyOutput, tokensIn, tokensOut, sessionId };
     },
   };
 }

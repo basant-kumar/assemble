@@ -80,6 +80,12 @@ export type RunStageOpts = {
    * approve the overspend and continue the run; false (or omit) to stop.
    */
   approveBudget?: (decision: import("./budget.js").BudgetDecision) => boolean;
+  /**
+   * Review stages resume the reviewer's prior thread by default. Set false to
+   * force a fresh thread that re-examines the work from scratch. Inert for
+   * non-review stages, which never carry a reviewer session to resume.
+   */
+  resume?: boolean;
 };
 
 export async function runStage(dir: string, config: AssembleConfig, stageId: string, opts: RunStageOpts = {}): Promise<void> {
@@ -112,7 +118,7 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
   // the reviewer's own thread and re-examine only what changed since last time.
   const isReview = isReviewStage(stage);
   const round = isReview ? reviewRoundCount(events, stageId) : 0;
-  const resumeSessionId = isReview ? lastReviewSession(events, stageId) : undefined;
+  const resumeSessionId = isReview && opts.resume !== false ? lastReviewSession(events, stageId) : undefined;
 
   let prompt = withSkills(agent.skills, stage.prompt);
   if (isReview && round > 0)
@@ -125,6 +131,8 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
   if (agent.provider === "codex" && agent.effort) runOpts.effort = agent.effort;
   if (agent.timeout) runOpts.timeoutMs = parseDurationMs(agent.timeout);
   if (resumeSessionId) runOpts.resumeSessionId = resumeSessionId;
+  // Review stages are read-only; let sandbox-capable providers drop privileges.
+  if (isReview) runOpts.readOnly = true;
 
   appendEvent(dir, { type: "stage_started", stage: stage.id, agent: agentName });
   log(`▶ ${stage.id} — ${renderAgent(agentName, config)} on ${model}${resumeSessionId ? " (resuming reviewer thread)" : ""}`);
