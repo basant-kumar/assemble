@@ -51,17 +51,17 @@ type Preset = {
 /** Sensible per-provider fallback when the user switches provider mid-edit. */
 const PROVIDER_DEFAULTS: Record<Provider, { model: string; thinking?: string; effort?: string; pricing: { input: number; output: number } }> = {
   claude: { model: "claude-opus-4-8", thinking: "auto", pricing: { input: 15, output: 75 } },
-  codex: { model: "gpt-5-codex", effort: "high", pricing: { input: 1.25, output: 10 } },
+  codex: { model: "gpt-5.6-sol", effort: "high", pricing: { input: 5, output: 30 } },
 };
 
 /** Recommended profiles by hero archetype — accepted wholesale or tweaked. */
 const PRESETS: Record<string, Preset> = {
   architect: { role: "architect", provider: "claude", model: "claude-opus-4-8", thinking: "extended", timeout: "20m", context_window: "200k", pricing: { input: 15, output: 75 }, why: "deep reasoning for plan/design work" },
-  reviewer: { role: "code reviewer", provider: "codex", model: "gpt-5-codex", effort: "high", timeout: "20m", context_window: "400k", pricing: { input: 1.25, output: 10 }, why: "cross-provider heavyweight for review" },
+  reviewer: { role: "code reviewer", provider: "codex", model: "gpt-5.6-sol", effort: "high", timeout: "20m", context_window: "400k", pricing: { input: 5, output: 30 }, why: "cross-provider heavyweight for review" },
   implementer: { role: "implementer", provider: "claude", model: "claude-opus-4-8", thinking: "auto", timeout: "15m", context_window: "200k", pricing: { input: 15, output: 75 }, why: "strong general implementer" },
   worker: { role: "implementer", provider: "claude", model: "claude-sonnet-4-6", thinking: "auto", timeout: "10m", context_window: "200k", pricing: { input: 3, output: 15 }, why: "workhorse for big batches / refactors" },
   fast: { role: "fast worker", provider: "claude", model: "claude-haiku-4-5-20251001", thinking: "off", timeout: "5m", context_window: "200k", pricing: { input: 1, output: 5 }, why: "cheap + fast for small batches / memory" },
-  precision: { role: "precision editor", provider: "codex", model: "gpt-5-codex-mini", effort: "low", timeout: "5m", context_window: "200k", pricing: { input: 0.25, output: 1 }, why: "cheap precision for minor edits" },
+  precision: { role: "precision editor", provider: "codex", model: "gpt-5.6-luna", effort: "low", timeout: "5m", context_window: "200k", pricing: { input: 1, output: 6 }, why: "cheap precision for minor edits" },
 };
 
 /**

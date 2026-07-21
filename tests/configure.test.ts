@@ -69,7 +69,8 @@ describe("runConfigureWizard", () => {
     expect(cfg.agents.thor.model).toBe("claude-opus-4-8");
     expect(cfg.agents.vision.provider).toBe("codex");
     expect(cfg.agents.vision.effort).toBe("high");
-    expect(cfg.pricing["gpt-5-codex"].input).toBeCloseTo(1.25 / 1_000_000);
+    expect(cfg.agents.vision.model).toBe("gpt-5.6-sol");
+    expect(cfg.pricing["gpt-5.6-sol"].input).toBeCloseTo(5 / 1_000_000);
     expect(io.remaining()).toBe(0);
   });
 

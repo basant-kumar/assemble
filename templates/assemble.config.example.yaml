@@ -107,7 +107,7 @@ models:
 
   codex-mini:                    # very cheap: lint-grade delta reviews
     provider: codex
-    model: gpt-5-codex-mini
+    model: gpt-5.6-luna
     effort: low
     timeout: 5m
     cost: { in: 0.25, out: 1 }
@@ -177,7 +177,7 @@ stages:
   code-review:   { agent: vision, max_rounds: 3 }     # delta reviews per batch
   code-review-full: { agent: danvers, when: auto }    # fresh-thread final pass
   # Example inline pin — cheap model for just this stage:
-  # code-review: { provider: codex, model: gpt-5-codex-mini, max_rounds: 3 }
+  # code-review: { provider: codex, model: gpt-5.6-luna, max_rounds: 3 }
   release:       { agent: cap, gate: human }          # 🏛️ Council (human) signs off before ship
   memory-sync:   { agent: jarvis }
 

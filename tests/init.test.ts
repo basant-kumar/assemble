@@ -38,7 +38,7 @@ describe("initProject", () => {
     initProject(dir);
     const cfg = loadConfig(dir);
     expect(cfg.pricing["claude-opus-4-8"]).toBeDefined();
-    expect(cfg.pricing["gpt-5-codex"]).toBeDefined();
+    expect(cfg.pricing["gpt-5.6-sol"]).toBeDefined();
   });
   it("leaves memory opt-in: disabled by default and does not seed ARCHI.md", () => {
     const dir = mkdtempSync(join(tmpdir(), "asm-"));
