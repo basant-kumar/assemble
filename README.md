@@ -25,7 +25,7 @@ but models are config, gates are code, and any provider CLI can join the team.
 - [How a hero gets cast (config resolution)](#how-a-hero-gets-cast-config-resolution)
 - [The review loop (why agents can't skip gates)](#the-review-loop-why-agents-cant-skip-gates)
 - [Quick start](#quick-start)
-  - [Build & run from source (local, unpublished)](#build--run-from-source-local-unpublished)
+  - [Build & run from source (local)](#build--run-from-source-local)
 - [Cast any model into any role](#cast-any-model-into-any-role)
 - [Budget caps](#budget-caps)
 - [Design docs](#design-docs)
@@ -162,7 +162,7 @@ mirrored `AGENTS.md` for codex (and other `AGENTS.md`-aware CLIs). Both are
 refreshed in place inside a marked block on re-init and never clobber your own
 notes.
 
-### Build & run from source (local, unpublished)
+### Build & run from source (local)
 
 No npm release needed — build it yourself and put the `assemble` command on your PATH:
 
