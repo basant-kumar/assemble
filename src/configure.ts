@@ -59,7 +59,7 @@ const PRESETS: Record<string, Preset> = {
   architect: { role: "architect", provider: "claude", model: "claude-opus-4-8", thinking: "extended", timeout: "20m", context_window: "200k", pricing: { input: 15, output: 75 }, why: "deep reasoning for plan/design work" },
   reviewer: { role: "code reviewer", provider: "codex", model: "gpt-5.6-sol", effort: "high", timeout: "20m", context_window: "400k", pricing: { input: 5, output: 30 }, why: "cross-provider heavyweight for review" },
   implementer: { role: "implementer", provider: "claude", model: "claude-opus-4-8", thinking: "auto", timeout: "15m", context_window: "200k", pricing: { input: 15, output: 75 }, why: "strong general implementer" },
-  worker: { role: "implementer", provider: "claude", model: "claude-sonnet-4-6", thinking: "auto", timeout: "10m", context_window: "200k", pricing: { input: 3, output: 15 }, why: "workhorse for big batches / refactors" },
+  worker: { role: "implementer", provider: "claude", model: "claude-sonnet-5", thinking: "auto", timeout: "10m", context_window: "200k", pricing: { input: 3, output: 15 }, why: "workhorse for big batches / refactors" },
   fast: { role: "fast worker", provider: "claude", model: "claude-haiku-4-5-20251001", thinking: "off", timeout: "5m", context_window: "200k", pricing: { input: 1, output: 5 }, why: "cheap + fast for small batches / memory" },
   precision: { role: "precision editor", provider: "codex", model: "gpt-5.6-luna", effort: "low", timeout: "5m", context_window: "200k", pricing: { input: 1, output: 6 }, why: "cheap precision for minor edits" },
 };
@@ -89,7 +89,7 @@ export const ROLES: string[] = [...new Set(ROSTER.map(r => r.role))];
 
 /** Known models per provider — the model picker is select-only to prevent typos. */
 export const KNOWN_MODELS: Record<Provider, string[]> = {
-  claude: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+  claude: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
   codex: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5-codex", "gpt-5-codex-mini"],
 };
 
@@ -104,7 +104,7 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
   // claude (exact API model IDs — dashed, not dotted; haiku carries its date suffix)
   "claude-fable-5": { input: 10, output: 50 },
   "claude-opus-4-8": { input: 15, output: 75 },
-  "claude-sonnet-4-6": { input: 3, output: 15 },
+  "claude-sonnet-5": { input: 3, output: 15 },
   "claude-haiku-4-5-20251001": { input: 1, output: 5 },
   // codex / openai
   "gpt-5.6-sol": { input: 5, output: 30 },
@@ -134,14 +134,14 @@ export function defaultRosterDoc(project: string): Record<string, unknown> {
       // human signs off before any code is written. The human gate on
       // `plan-review` is the approval-to-implement checkpoint.
       { id: "plan", agent: "stark", gate: "auto", prompt: "Draft an implementation plan for the requested change. Break it into small, independently reviewable steps with clear acceptance criteria." },
-      { id: "plan-review", agent: "strange", gate: "human", prompt: "Review stark's plan for soundness, scope, and risk. Send it back to the planner with concrete asks until it is sound, then end with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED. On APPROVED the plan waits for the human's sign-off (`assemble gate approve plan-review`) before implementation begins." },
+      { id: "plan-review", agent: "strange", gate: "human", reworkTarget: "plan", prompt: "Review stark's plan for soundness, scope, and risk. On REQUEST_CHANGES the plan is bounced back to stark automatically with your concerns; you then re-review what changed. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED. On APPROVED the plan waits for the human's sign-off (`assemble gate approve plan-review`) before implementation begins." },
       // Design path: skippable for pure-logic changes (`assemble gate skip design`).
       { id: "design", agent: "stark", gate: "auto", when: "auto", flavor: "technical", prompt: "Produce a technical design for the approved plan: interfaces, data shapes, and the touch-list of files. For UI-flavored work this routes to shuri." },
-      { id: "design-review", agent: "strange", gate: "auto", when: "auto", prompt: "Review the design against the plan. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
+      { id: "design-review", agent: "strange", gate: "auto", when: "auto", reworkTarget: "design", prompt: "Review the design against the plan. On REQUEST_CHANGES the design is bounced back to its author automatically with your concerns; you then re-review what changed. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
       // Implement → review → ship: driven by the orchestrator once the plan is
       // human-approved. Only the release needs a second human sign-off.
       { id: "implement", agent: "thor", gate: "auto", prompt: "Implement the approved plan in small batches. Follow existing project conventions." },
-      { id: "code-review", agent: "vision", gate: "auto", prompt: "Review the latest diff against the plan. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
+      { id: "code-review", agent: "vision", gate: "auto", reworkTarget: "implement", prompt: "Review the latest diff against the plan. On REQUEST_CHANGES the work is bounced back to thor automatically with your concerns; you then re-review what changed. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
       { id: "code-review-full", agent: "danvers", gate: "auto", when: "auto", prompt: "Fresh-thread full-tree review of the complete change. End with exactly one verdict: APPROVED, REQUEST_CHANGES, or BLOCKED." },
       { id: "release", agent: "cap", gate: "human", prompt: "Prepare release notes and ship in the order the human approves (`assemble gate approve release`)." },
     ],
@@ -287,6 +287,62 @@ async function configureHero(io: WizardIO, name: string, agents: Record<string, 
   io.out(`  ✔ ${name} → ${summarizeAgent(agent)}`);
 }
 
+/** Flat provider/model menu (`provider:model`) for the duo mode pickers. */
+function modelOptions(): Choice<string>[] {
+  const opts: Choice<string>[] = [];
+  for (const provider of Object.keys(KNOWN_MODELS) as Provider[])
+    for (const model of KNOWN_MODELS[provider])
+      opts.push({ name: `${provider} / ${model}`, value: `${provider}:${model}` });
+  opts.push({ name: "＋ custom model…", value: CUSTOM });
+  return opts;
+}
+
+/**
+ * Pick one of duo mode's two agents (writer/reviewer) freely: any provider +
+ * model from the catalog (or a custom id). Writes the agent + its list price so
+ * the loader's preset merge (file agent wins) uses the user's choice instead of
+ * the built-in duo default.
+ */
+async function pickModeAgent(
+  io: WizardIO,
+  label: string,
+  name: string,
+  role: string,
+  def: { provider: Provider; model: string },
+  agents: Record<string, AgentDoc>,
+  pricing: Record<string, { input: number; output: number }>,
+): Promise<void> {
+  const cur = agents[name];
+  const defVal =
+    cur && KNOWN_MODELS[cur.provider as Provider]?.includes(cur.model)
+      ? `${cur.provider}:${cur.model}`
+      : `${def.provider}:${def.model}`;
+  const choice = await io.select(`${label} model`, modelOptions(), defVal);
+
+  let provider: string;
+  let model: string;
+  if (choice === CUSTOM) {
+    provider = await io.select<Provider>(`${label} provider`, [
+      { name: "claude", value: "claude" },
+      { name: "codex", value: "codex" },
+    ], def.provider);
+    model = (await io.input(`${label} custom model id`, def.model)).trim() || def.model;
+  } else {
+    const i = choice.indexOf(":");
+    provider = choice.slice(0, i);
+    model = choice.slice(i + 1);
+  }
+
+  const agent: AgentDoc = { role, provider, model, skills: [] };
+  if (provider === "codex") agent.effort = PROVIDER_DEFAULTS.codex.effort ?? "high";
+  else agent.thinking = "auto";
+  agents[name] = agent;
+
+  const rate = MODEL_PRICING[model] ?? PROVIDER_DEFAULTS[provider as Provider]?.pricing;
+  if (rate) pricing[model] = { input: rate.input / MTOK, output: rate.output / MTOK };
+  io.out(`  ✔ ${name} → ${provider}/${model}`);
+}
+
 /**
  * Interactive, menu-driven wizard. Shows all heroes with their current model,
  * lets the user pick one to configure (arrow keys in the CLI), add new heroes,
@@ -319,7 +375,7 @@ export async function runConfigureWizard(dir: string, io: WizardIO): Promise<{ p
   // configured below. Writing `mode` here; the loader wires agents at load.
   const modeLabels: Record<Mode, string> = {
     solo: "solo — one model plays every hero (claude/claude-fable-5)",
-    duo:  "duo  — writer (claude/claude-fable-5) + reviewer (codex/gpt-5.6-sol)",
+    duo:  "duo  — a writer + a reviewer, each model you choose",
     full: "full — the whole roster, configured per-hero below",
   };
   const curMode: Mode =
@@ -333,8 +389,18 @@ export async function runConfigureWizard(dir: string, io: WizardIO): Promise<{ p
   );
   if (mode === "full") delete doc.mode;
   else doc.mode = mode;
-  if (mode !== "full")
-    io.out(`  ℹ ${mode} mode: agents are derived at load — the roster below is kept but unused until you switch to full`);
+
+  if (mode === "duo") {
+    // Let the user freely pick both duo agents; the loader's preset merge keeps
+    // whatever we write here (file agent wins over the built-in duo defaults).
+    io.out("\n  duo mode: pick the two models (defaults shown)");
+    await pickModeAgent(io, "Writer", "writer", "implementer",
+      { provider: "claude", model: "claude-fable-5" }, agents, pricing);
+    await pickModeAgent(io, "Reviewer", "reviewer", "code reviewer",
+      { provider: "codex", model: "gpt-5.6-sol" }, agents, pricing);
+  } else if (mode === "solo") {
+    io.out(`  ℹ solo mode: one model is derived at load — the roster below is kept but unused until you switch to full`);
+  }
 
   const heroes = Object.keys(agents);
 

@@ -1,6 +1,6 @@
 import type { AssembleConfig, StageDef } from "./config.js";
 import { parseDurationMs } from "./config.js";
-import { appendEvent, readLedger, deriveStageStatus, isStageSatisfied, isReviewStage, lastReviewSession, reviewRoundCount } from "./ledger.js";
+import { appendEvent, readLedger, deriveStageStatus, isStageSatisfied, isReviewStage, lastReviewSession, reviewRoundCount, lastReworkNotes, lastStageSession } from "./ledger.js";
 import { parseVerdict } from "./protocol.js";
 import { getAdapter, type Adapter, type RunOpts } from "./adapters.js";
 import { renderAgent } from "./theme.js";
@@ -118,11 +118,21 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
   // the reviewer's own thread and re-examine only what changed since last time.
   const isReview = isReviewStage(stage);
   const round = isReview ? reviewRoundCount(events, stageId) : 0;
-  const resumeSessionId = isReview && opts.resume !== false ? lastReviewSession(events, stageId) : undefined;
+  const resumeReview = isReview && opts.resume !== false ? lastReviewSession(events, stageId) : undefined;
+
+  // An author (non-review) stage a reviewer bounced back sits at needs_rework:
+  // resume its own thread and inject the reviewer's concerns so it addresses
+  // them rather than re-drafting cold.
+  const reworking = !isReview && deriveStageStatus(events, stage) === "needs_rework";
+  const reworkNotes = reworking ? lastReworkNotes(events, stageId) : undefined;
+  const resumeAuthor = reworking && opts.resume !== false ? lastStageSession(events, stageId) : undefined;
+  const resumeSessionId = resumeReview ?? resumeAuthor;
 
   let prompt = withSkills(agent.skills, stage.prompt);
   if (isReview && round > 0)
     prompt = `Re-review (round ${round + 1}). You previously requested changes; re-examine the work — focus on what changed since your last verdict — and end with a single verdict line: APPROVED, REQUEST_CHANGES, or BLOCKED.\n\n${prompt}`;
+  else if (reworking)
+    prompt = `A reviewer requested changes to your previous work. Address every concern below — fix what needs fixing, or, where you disagree, revise the work so the reasoning is explicit. Then produce the updated work.\n\nReviewer feedback:\n${reworkNotes ?? "(see the review stage's verdict)"}\n\n${prompt}`;
 
   // Resolve the agent's per-model knobs into adapter run options. Each adapter
   // applies only what its provider supports; the "wrong" knob is inert.
@@ -135,10 +145,11 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
   if (isReview) runOpts.readOnly = true;
 
   appendEvent(dir, { type: "stage_started", stage: stage.id, agent: agentName });
-  log(`▶ ${stage.id} — ${renderAgent(agentName, config)} on ${model}${resumeSessionId ? " (resuming reviewer thread)" : ""}`);
+  const resumeNote = resumeSessionId ? (isReview ? " (resuming reviewer thread)" : " (resuming author thread)") : "";
+  log(`▶ ${stage.id} — ${renderAgent(agentName, config)} on ${model}${resumeNote}`);
   try {
     const result = await adapter.run(runOpts);
-    appendEvent(dir, { type: "stage_completed", stage: stage.id, agent: agentName, tokensIn: result.tokensIn, tokensOut: result.tokensOut });
+    appendEvent(dir, { type: "stage_completed", stage: stage.id, agent: agentName, tokensIn: result.tokensIn, tokensOut: result.tokensOut, sessionId: result.sessionId });
     appendEvent(dir, {
       type: "cost", stage: stage.id, worker: agentName, model,
       tokensIn: result.tokensIn, tokensOut: result.tokensOut,
@@ -156,11 +167,18 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
         log(`  ⚠ ${stage.id} — no verdict found in reviewer output; recording REQUEST_CHANGES`);
       appendEvent(dir, { type: "review_verdict", stage: stage.id, agent: agentName, verdict: recorded, sessionId: result.sessionId });
       log(`  ⚖ ${stage.id} — verdict: ${recorded}`);
-      // A BLOCKED verdict with a declared rework target sends that earlier stage
-      // back to needs_rework so the author re-runs it before the review retries.
-      if (recorded === "BLOCKED" && stage.reworkTarget) {
-        appendEvent(dir, { type: "gate_rejected", stage: stage.reworkTarget, approvedBy: agentName, notes: `blocked by ${stage.id} review` });
-        log(`  ↩ ${stage.id} — BLOCKED: routed '${stage.reworkTarget}' back for rework`);
+      // Any non-approving verdict that leaves the review still looping (i.e. it
+      // did not just escalate to a human gate on its round budget) bounces the
+      // declared rework target back to needs_rework, carrying the reviewer's
+      // concerns. The pipeline then re-runs that author and resumes this reviewer
+      // to re-examine what changed. On escalation (awaiting_gate) or APPROVED the
+      // author is left alone.
+      if (stage.reworkTarget && recorded !== "APPROVED") {
+        const reviewStatus = deriveStageStatus(readLedger(dir), stage);
+        if (reviewStatus === "needs_rework") {
+          appendEvent(dir, { type: "gate_rejected", stage: stage.reworkTarget, approvedBy: agentName, notes: result.output });
+          log(`  ↩ ${stage.id} — ${recorded}: routed '${stage.reworkTarget}' back for rework`);
+        }
       }
       // Reviewers are read-only: never auto-commit their working tree.
       return;

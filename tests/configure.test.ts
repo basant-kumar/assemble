@@ -237,14 +237,33 @@ describe("runConfigureWizard", () => {
   });
   it("writes the chosen mode and the loader expands it", async () => {
     const dir = setup();
-    // Answer the team-shape prompt with 'duo', then save immediately.
-    const io = scriptedIO(["duo", "__done__"]);
+    // Answer team-shape with 'duo', accept the two model defaults, then save.
+    const io = scriptedIO(["duo", "", "", "__done__"]);
     await runConfigureWizard(dir, io);
     const doc = parse(readFileSync(join(dir, "assemble.config.yaml"), "utf8"));
     expect(doc.mode).toBe("duo");
     const cfg = loadConfig(dir);
     expect(cfg.stages.find(s => s.id === "implement")!.agent).toBe("writer");
     expect(cfg.stages.find(s => s.id === "code-review")!.agent).toBe("reviewer");
+  });
+  it("duo mode lets the user pick both models freely", async () => {
+    const dir = setup();
+    // duo, writer -> claude/sonnet-5, reviewer -> codex/gpt-5-codex, save.
+    const io = scriptedIO([
+      "duo",
+      "claude:claude-sonnet-5",
+      "codex:gpt-5-codex",
+      "__done__",
+    ]);
+    await runConfigureWizard(dir, io);
+    const doc = parse(readFileSync(join(dir, "assemble.config.yaml"), "utf8"));
+    expect(doc.mode).toBe("duo");
+    expect(doc.agents.writer.model).toBe("claude-sonnet-5");
+    expect(doc.agents.reviewer.model).toBe("gpt-5-codex");
+    // File agents win over the built-in duo preset, so the loader keeps them.
+    const cfg = loadConfig(dir);
+    expect(cfg.agents.writer.model).toBe("claude-sonnet-5");
+    expect(cfg.agents.reviewer.model).toBe("gpt-5-codex");
   });
   it("selecting full mode omits the mode field (roster used as written)", async () => {
     const dir = setup();

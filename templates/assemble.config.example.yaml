@@ -72,7 +72,7 @@ models:
 
   sonnet-worker:                 # workhorse for implement batches
     provider: claude
-    model: claude-sonnet-4-6
+    model: claude-sonnet-5
     thinking: auto
     context_window: 200k
     timeout: 10m

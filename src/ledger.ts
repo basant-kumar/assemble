@@ -101,6 +101,28 @@ export function lastReviewSession(events: LedgerEvent[], stageId: string): strin
   return sid;
 }
 
+// The reviewer's concerns from the most recent rework bounce, so a re-run
+// author can address them. Reads the notes of the latest `gate_rejected` event
+// for a stage — the reviewer's verdict output, routed here via `reworkTarget`.
+export function lastReworkNotes(events: LedgerEvent[], stageId: string): string | undefined {
+  let notes: string | undefined;
+  for (const e of events) {
+    if (e.stage === stageId && e.type === "gate_rejected") notes = e.notes;
+  }
+  return notes;
+}
+
+// The most recent session id a stage's own run recorded, if any — used to
+// resume the author's thread so a rework re-run keeps its prior context
+// instead of starting cold.
+export function lastStageSession(events: LedgerEvent[], stageId: string): string | undefined {
+  let sid: string | undefined;
+  for (const e of events) {
+    if (e.stage === stageId && e.type === "stage_completed" && e.sessionId) sid = e.sessionId;
+  }
+  return sid;
+}
+
 // A stage counts as "satisfied" for the purpose of unblocking a later stage
 // when it is either approved or skipped — both mean "no outstanding work here".
 export function isStageSatisfied(status: StageStatus): boolean {
