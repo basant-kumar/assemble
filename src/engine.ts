@@ -1,6 +1,7 @@
 import type { AssembleConfig, StageDef } from "./config.js";
 import { parseDurationMs } from "./config.js";
-import { appendEvent, readLedger, deriveStageStatus, isStageSatisfied } from "./ledger.js";
+import { appendEvent, readLedger, deriveStageStatus, isStageSatisfied, isReviewStage, lastReviewSession, reviewRoundCount } from "./ledger.js";
+import { parseVerdict } from "./protocol.js";
 import { getAdapter, type Adapter, type RunOpts } from "./adapters.js";
 import { renderAgent } from "./theme.js";
 import { commitStageChanges } from "./sideops.js";
@@ -105,7 +106,17 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
     log(`  ↳ flavor:${stage.flavor} → auto-selected ${renderAgent(agentName, config)} (${agent.role})`);
   const adapter = opts.adapters?.[agent.provider] ?? getAdapter(agent.provider);
   const model = stage.modelOverride ?? agent.model;
-  const prompt = withSkills(agent.skills, stage.prompt);
+
+  // Agent-review stages carry a machine gate: the agent emits a verdict and is
+  // read-only (never auto-commits). Track the round so a re-review can resume
+  // the reviewer's own thread and re-examine only what changed since last time.
+  const isReview = isReviewStage(stage);
+  const round = isReview ? reviewRoundCount(events, stageId) : 0;
+  const resumeSessionId = isReview ? lastReviewSession(events, stageId) : undefined;
+
+  let prompt = withSkills(agent.skills, stage.prompt);
+  if (isReview && round > 0)
+    prompt = `Re-review (round ${round + 1}). You previously requested changes; re-examine the work — focus on what changed since your last verdict — and end with a single verdict line: APPROVED, REQUEST_CHANGES, or BLOCKED.\n\n${prompt}`;
 
   // Resolve the agent's per-model knobs into adapter run options. Each adapter
   // applies only what its provider supports; the "wrong" knob is inert.
@@ -113,9 +124,10 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
   if (agent.provider === "claude" && agent.thinking) runOpts.thinking = agent.thinking;
   if (agent.provider === "codex" && agent.effort) runOpts.effort = agent.effort;
   if (agent.timeout) runOpts.timeoutMs = parseDurationMs(agent.timeout);
+  if (resumeSessionId) runOpts.resumeSessionId = resumeSessionId;
 
   appendEvent(dir, { type: "stage_started", stage: stage.id, agent: agentName });
-  log(`▶ ${stage.id} — ${renderAgent(agentName, config)} on ${model}`);
+  log(`▶ ${stage.id} — ${renderAgent(agentName, config)} on ${model}${resumeSessionId ? " (resuming reviewer thread)" : ""}`);
   try {
     const result = await adapter.run(runOpts);
     appendEvent(dir, { type: "stage_completed", stage: stage.id, agent: agentName, tokensIn: result.tokensIn, tokensOut: result.tokensOut });
@@ -125,6 +137,27 @@ export async function runStage(dir: string, config: AssembleConfig, stageId: str
       costUsd: computeCost(config, model, result.tokensIn, result.tokensOut),
     });
     log(`✔ ${stage.id} — ${renderAgent(agentName, config)} done`);
+
+    if (isReview) {
+      // Machine gate: extract the reviewer's verdict and record it. A malformed
+      // response (no verdict line) is treated as REQUEST_CHANGES so a run never
+      // auto-approves on a reviewer that ignored the protocol.
+      const verdict = parseVerdict(result.output);
+      const recorded = verdict ?? "REQUEST_CHANGES";
+      if (!verdict)
+        log(`  ⚠ ${stage.id} — no verdict found in reviewer output; recording REQUEST_CHANGES`);
+      appendEvent(dir, { type: "review_verdict", stage: stage.id, agent: agentName, verdict: recorded, sessionId: result.sessionId });
+      log(`  ⚖ ${stage.id} — verdict: ${recorded}`);
+      // A BLOCKED verdict with a declared rework target sends that earlier stage
+      // back to needs_rework so the author re-runs it before the review retries.
+      if (recorded === "BLOCKED" && stage.reworkTarget) {
+        appendEvent(dir, { type: "gate_rejected", stage: stage.reworkTarget, approvedBy: agentName, notes: `blocked by ${stage.id} review` });
+        log(`  ↩ ${stage.id} — BLOCKED: routed '${stage.reworkTarget}' back for rework`);
+      }
+      // Reviewers are read-only: never auto-commit their working tree.
+      return;
+    }
+
     if (opts.autoCommit && config.utilityModel) {
       const commit = await commitStageChanges(dir, config, stage.id, {
         adapter: opts.autoCommit.adapter, gitBin: opts.autoCommit.gitBin, diffSummary: result.output,

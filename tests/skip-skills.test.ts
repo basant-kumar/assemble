@@ -30,9 +30,11 @@ function project(overrides = "") {
   writeFileSync(join(dir, "assemble.config.yaml"), overrides || YAML);
   return { dir, config: loadConfig(dir) };
 }
+// Stands in for any agent, including a reviewer: its output carries an APPROVED
+// verdict so an agent-review stage clears its machine gate in pipeline tests.
 const capturingAdapter = (prompts: string[] = []): Adapter => ({
   name: "fake",
-  async run({ prompt }) { prompts.push(prompt); return { output: "ok", tokensIn: 1, tokensOut: 1 }; },
+  async run({ prompt }) { prompts.push(prompt); return { output: "APPROVED", tokensIn: 1, tokensOut: 1 }; },
 });
 
 describe("agent skills", () => {

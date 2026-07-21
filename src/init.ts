@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, cpSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ConfigError, DEFAULT_ARCHI_PATH } from "./config.js";
+import { DEFAULT_ARCHI_PATH } from "./config.js";
 import { defaultConfigYaml } from "./configure.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -81,12 +81,23 @@ follow-up._
 `;
 
 export function initProject(dir: string): { created: string[] } {
-  const cfgPath = join(dir, "assemble.config.yaml");
-  if (existsSync(cfgPath)) throw new ConfigError(`assemble.config.yaml already exists in ${dir}`);
-  writeFileSync(cfgPath, DEFAULT_CONFIG);
-  mkdirSync(join(dir, ".assemble"), { recursive: true });
+  const created: string[] = [];
 
-  const created = ["assemble.config.yaml", ".assemble/"];
+  // The config belongs to the user. Seed the default only when none exists;
+  // never overwrite one that's already there — they may have customised heroes,
+  // gates, budgets or pricing. Re-running `init` on a configured repo is still
+  // worthwhile: it (re)installs the skill and refreshes the codex block, which
+  // is the whole reason this command no longer aborts on an existing config.
+  const cfgPath = join(dir, "assemble.config.yaml");
+  if (existsSync(cfgPath)) {
+    created.push("assemble.config.yaml (kept)");
+  } else {
+    writeFileSync(cfgPath, DEFAULT_CONFIG);
+    created.push("assemble.config.yaml");
+  }
+
+  mkdirSync(join(dir, ".assemble"), { recursive: true });
+  created.push(".assemble/");
 
   // Install the `assemble` Claude skill at the repo level (not globally) so
   // Claude Code discovers it for this project. Copied fresh on init; a stale

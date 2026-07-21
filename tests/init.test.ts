@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initProject, ARCHI_PATH, SKILL_PATH, AGENTS_PATH, mergeAgentsMd } from "../src/init.js";
-import { loadConfig, ConfigError } from "../src/config.js";
+import { loadConfig } from "../src/config.js";
 
 describe("initProject", () => {
   it("writes a loadable default config and state dir", () => {
@@ -14,10 +14,24 @@ describe("initProject", () => {
     expect(cfg.stages.length).toBeGreaterThanOrEqual(2);
     expect(cfg.agents.thor.role).toBe("implementer");
   });
-  it("refuses to overwrite an existing config", () => {
+  it("keeps an existing config untouched but still (re)installs the skill", () => {
     const dir = mkdtempSync(join(tmpdir(), "asm-"));
     initProject(dir);
-    expect(() => initProject(dir)).toThrow(ConfigError);
+    // The user customises their config after the first init …
+    const cfgPath = join(dir, "assemble.config.yaml");
+    const customised = readFileSync(cfgPath, "utf8") + "\n# my hand edit\n";
+    writeFileSync(cfgPath, customised);
+    // … and the installed skill goes missing (e.g. was never committed).
+    rmSync(join(dir, SKILL_PATH), { recursive: true, force: true });
+
+    const r = initProject(dir);
+    // Config preserved byte-for-byte, reported as kept (not created).
+    expect(readFileSync(cfgPath, "utf8")).toBe(customised);
+    expect(r.created).toContain("assemble.config.yaml (kept)");
+    expect(r.created).not.toContain("assemble.config.yaml");
+    // The skill is reinstalled despite the pre-existing config.
+    expect(existsSync(join(dir, SKILL_PATH, "SKILL.md"))).toBe(true);
+    expect(r.created).toContain(SKILL_PATH + "/");
   });
   it("scaffolds an example pricing table for the default agents' models", () => {
     const dir = mkdtempSync(join(tmpdir(), "asm-"));

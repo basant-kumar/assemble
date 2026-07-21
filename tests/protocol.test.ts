@@ -6,7 +6,7 @@ describe("protocol constants", () => {
     expect(VERDICTS).toEqual(["APPROVED", "REQUEST_CHANGES", "BLOCKED"]);
   });
   it("stage statuses are exact", () => {
-    expect(STAGE_STATUSES).toEqual(["pending", "running", "awaiting_gate", "approved", "needs_rework", "failed", "skipped"]);
+    expect(STAGE_STATUSES).toEqual(["pending", "running", "awaiting_review", "awaiting_gate", "approved", "needs_rework", "failed", "skipped"]);
   });
   it("reserved stage ids match the spec list", () => {
     expect(RESERVED_STAGE_IDS).toEqual(["run","init","status","gate","report","models","config","clean","adhoc","resume"]);

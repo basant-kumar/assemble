@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import { loadConfig, ConfigError, type AssembleConfig } from "./config.js";
 import { readLedger, deriveStageStatus } from "./ledger.js";
 import { renderAgent } from "./theme.js";
@@ -21,7 +22,7 @@ import { runConfigureWizard, type WizardIO } from "./configure.js";
 import { select, input } from "@inquirer/prompts";
 
 const ICONS: Record<StageStatus, string> = {
-  approved: "✔", awaiting_gate: "⏸", failed: "✖", needs_rework: "✖", running: "▶", pending: "·", skipped: "⤼",
+  approved: "✔", awaiting_review: "⧖", awaiting_gate: "⏸", failed: "✖", needs_rework: "✖", running: "▶", pending: "·", skipped: "⤼",
 };
 
 export function buildProgram(dir: string, io: { out: (s: string) => void } = { out: console.log }): Command {
@@ -41,10 +42,15 @@ export function buildProgram(dir: string, io: { out: (s: string) => void } = { o
     return config;
   };
 
-  program.command("init").description("scaffold assemble.config.yaml (default MCU theme)").action(() => {
-    const r = initProject(dir);
-    io.out(`created ${r.created.join(", ")} — edit assemble.config.yaml, then: assemble run`);
-  });
+  program.command("init")
+    .argument("[dir]", "target project directory (defaults to the current directory)")
+    .description("install the assemble skill + scaffold assemble.config.yaml (existing config is kept, never overwritten)")
+    .action((target: string | undefined) => {
+      const targetDir = target ? resolve(dir, target) : dir;
+      const r = initProject(targetDir);
+      io.out(`assemble init${target ? ` (${targetDir})` : ""}: ${r.created.join(", ")}`);
+      io.out(`next: edit assemble.config.yaml, then \`assemble run\``);
+    });
 
   program.command("status").description("pipeline status — who's working").action(() => printStatus(requireConfig()));
 

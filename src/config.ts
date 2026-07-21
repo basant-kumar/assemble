@@ -64,6 +64,20 @@ const StageSchema = z.object({
   // Optional routing hint for review stages: a "ui" change wants a design
   // reviewer, "technical" wants a code reviewer, "both" wants each.
   flavor: z.enum(["technical", "ui", "both"]).optional(),
+  // Mark a stage as an agent-review stage: its agent emits a verdict
+  // (APPROVED / REQUEST_CHANGES / BLOCKED) that must reach APPROVED before the
+  // stage's gate is offered. When omitted, any stage whose id contains
+  // "review" is treated as one (see isReviewStage). Set `review: false` to
+  // opt a "review"-named stage out.
+  review: z.boolean().optional(),
+  // Convergence budget for a review stage. After this many non-approving
+  // rounds without an APPROVED verdict, the stage escalates to a human gate
+  // instead of looping forever.
+  maxRounds: z.number().int().positive().default(3),
+  // On a BLOCKED verdict, bounce this earlier stage back to needs_rework
+  // (e.g. a code review that blocks routes back to the plan). Must reference an
+  // earlier stage id. When omitted, BLOCKED loops the review stage itself.
+  reworkTarget: z.string().optional(),
 });
 const PricingEntrySchema = z.object({
   input: z.number().nonnegative(),
@@ -180,6 +194,12 @@ export function loadConfig(dir: string, env: NodeJS.ProcessEnv = process.env): A
     if (seen.has(s.id)) throw new ConfigError(`duplicate stage id '${s.id}'`);
     seen.add(s.id);
     if (!cfg.agents[s.agent]) throw new ConfigError(`stage '${s.id}' references unknown agent '${s.agent}'`);
+    if (s.reworkTarget !== undefined) {
+      if (s.reworkTarget === s.id)
+        throw new ConfigError(`stage '${s.id}': reworkTarget cannot reference itself`);
+      if (!seen.has(s.reworkTarget))
+        throw new ConfigError(`stage '${s.id}': reworkTarget '${s.reworkTarget}' must be an earlier stage id`);
+    }
     const override = env[`ASSEMBLE_STAGE_${s.id}_MODEL`];
     if (override) s.modelOverride = override;
   }

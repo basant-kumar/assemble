@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildProgram } from "../src/cli.js";
@@ -53,6 +53,33 @@ describe("buildProgram", () => {
     const names = buildProgram(mkdtempSync(join(tmpdir(), "asm-"))).commands.map(c => c.name());
     expect(names).toContain("init");
     expect(names).not.toContain("implement");
+  });
+  it("init honors a target-dir argument, resolved relative to cwd, not the cwd itself", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "asm-cwd-"));
+    const target = mkdtempSync(join(tmpdir(), "asm-target-"));
+    const { io } = capture();
+    await buildProgram(cwd, io).parseAsync(["node", "assemble", "init", target]);
+    // Files land in the target, not the cwd.
+    expect(existsSync(join(target, ".claude/skills/assemble/SKILL.md"))).toBe(true);
+    expect(existsSync(join(target, "assemble.config.yaml"))).toBe(true);
+    expect(existsSync(join(cwd, "assemble.config.yaml"))).toBe(false);
+    expect(existsSync(join(cwd, ".claude"))).toBe(false);
+  });
+  it("init defaults to cwd when no target-dir is given", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "asm-cwd-"));
+    const { io } = capture();
+    await buildProgram(cwd, io).parseAsync(["node", "assemble", "init"]);
+    expect(existsSync(join(cwd, ".claude/skills/assemble/SKILL.md"))).toBe(true);
+    expect(existsSync(join(cwd, "assemble.config.yaml"))).toBe(true);
+  });
+  it("init keeps a pre-existing config in the target dir while still installing the skill", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "asm-cwd-"));
+    const target = project(); // has a customised assemble.config.yaml
+    const original = readFileSync(join(target, "assemble.config.yaml"), "utf8");
+    const { io } = capture();
+    await buildProgram(cwd, io).parseAsync(["node", "assemble", "init", target]);
+    expect(readFileSync(join(target, "assemble.config.yaml"), "utf8")).toBe(original);
+    expect(existsSync(join(target, ".claude/skills/assemble/SKILL.md"))).toBe(true);
   });
   it("status renders Name (role) and derived statuses", async () => {
     const dir = project();
