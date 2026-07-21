@@ -18,6 +18,18 @@ but models are config, gates are code, and any provider CLI can join the team.
 > missions, guards the gates, keeps the ledger — and calls **you** (the World
 > Security Council) when a mission needs a human decision.
 
+## Contents
+
+- [The roster](#the-roster)
+- [The mission loop](#the-mission-loop)
+- [How a hero gets cast (config resolution)](#how-a-hero-gets-cast-config-resolution)
+- [The review loop (why agents can't skip gates)](#the-review-loop-why-agents-cant-skip-gates)
+- [Quick start](#quick-start)
+  - [Build & run from source (local, unpublished)](#build--run-from-source-local-unpublished)
+- [Cast any model into any role](#cast-any-model-into-any-role)
+- [Budget caps](#budget-caps)
+- [Design docs](#design-docs)
+
 ## The roster
 
 | Agent | Mission | Default casting |
