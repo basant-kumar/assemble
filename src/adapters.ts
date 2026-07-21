@@ -54,11 +54,18 @@ const THINKING_BUDGET: Record<Thinking, string | null> = { off: "0", auto: null,
 export function claudeAdapter(bin = "claude"): Adapter {
   return {
     name: "claude",
-    async run({ prompt, model, cwd, thinking, timeoutMs, resumeSessionId }) {
+    async run({ prompt, model, cwd, thinking, timeoutMs, resumeSessionId, readOnly }) {
       let env: NodeJS.ProcessEnv | undefined;
       const budget = thinking ? THINKING_BUDGET[thinking] : null;
       if (budget !== null) env = { ...process.env, MAX_THINKING_TOKENS: budget };
       const args = ["-p", prompt, "--model", model, "--output-format", "json"];
+      // Grant implementers write access. In headless (-p) mode Claude auto-denies
+      // permissioned tools (Edit/Write/Bash) by default, so without this an
+      // implementer runs but makes no changes — the mirror of codex's
+      // workspace-write + never-approve. Reviewers stay on the default read-only
+      // mode (Read/Grep/Glob need no permission; any write is denied), matching
+      // codex's read-only sandbox.
+      if (!readOnly) args.push("--dangerously-skip-permissions");
       // Resume the prior session so re-review keeps its accumulated context.
       if (resumeSessionId) args.push("--resume", resumeSessionId);
       const stdout = await spawn(bin, args, cwd, { timeoutMs, env });

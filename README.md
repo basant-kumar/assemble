@@ -123,12 +123,29 @@ sequenceDiagram
     T-->>F: fixes applied
     F->>V: re-review (same thread, remembers round 1)
     V-->>F: {APPROVED}
-    Note over F: verdict recorded → heimdall (gates) opens the gate
-    Note over F,C: max_rounds exhausted → Council decides:<br/>assemble gate approve / reject
+    Note over F: APPROVED → machine gate opens automatically, no human needed
+    Note over F,C: max_rounds exhausted → escalate to human gate:<br/>assemble gate approve / reject
 ```
 
-Reviewers must emit schema-validated JSON verdicts. No verdict on file → the
-next stage refuses to start. A disobedient agent can stall — never skip.
+Each review stage carries a **two-phase gate**:
+
+1. **Machine gate** — the reviewer emits a schema-validated verdict (`APPROVED`,
+   `REQUEST_CHANGES`, or `BLOCKED`). `APPROVED` opens the gate automatically —
+   no human in the loop. Anything else routes the implementer back to
+   `needs_rework` (carrying the reviewer's concerns) and re-runs the loop.
+   Reviewers are read-only and never commit; a malformed or missing verdict line
+   is recorded as `REQUEST_CHANGES`, so a run never auto-approves on an agent
+   that ignored the protocol.
+2. **Human gate** — the loop is bounded by the stage's `max_rounds`. When the
+   reviewer and implementer can't converge in that budget, the run escalates to
+   you (the World Security Council) to `approve` the work as-is or `reject` it
+   for another round. Any stage marked `gate: human` also pauses here.
+
+Both the reviewer and the implementer **resume their own sessions** across
+rounds: the reviewer re-examines only what changed since its last verdict, and
+the implementer addresses the feedback in-thread rather than re-drafting cold.
+No verdict on file → the next stage refuses to start. A disobedient agent can
+stall — never skip.
 
 ## Quick start
 

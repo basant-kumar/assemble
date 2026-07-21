@@ -31,6 +31,18 @@ describe("claudeAdapter", () => {
     expect(r.tokensIn).toBe(0);
     expect(r.tokensOut).toBe(0);
   });
+  it("grants implementers write access so headless edits aren't auto-denied", async () => {
+    const argfile = join(mkdtempSync(join(tmpdir(), "asm-args-")), "args");
+    const bin = fakeBin(`printf '%s\\n' "$@" > ${argfile}\n` + `echo '{"result":"ok"}'`);
+    await claudeAdapter(bin).run({ prompt: "hi", model: "opus", cwd: process.cwd() });
+    expect(readFileSync(argfile, "utf8")).toContain("--dangerously-skip-permissions");
+  });
+  it("keeps reviewers read-only (no write-permission flag)", async () => {
+    const argfile = join(mkdtempSync(join(tmpdir(), "asm-args-")), "args");
+    const bin = fakeBin(`printf '%s\\n' "$@" > ${argfile}\n` + `echo '{"result":"ok"}'`);
+    await claudeAdapter(bin).run({ prompt: "hi", model: "opus", cwd: process.cwd(), readOnly: true });
+    expect(readFileSync(argfile, "utf8")).not.toContain("--dangerously-skip-permissions");
+  });
 });
 
 describe("codexAdapter", () => {
