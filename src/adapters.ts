@@ -59,13 +59,23 @@ export function claudeAdapter(bin = "claude"): Adapter {
       const budget = thinking ? THINKING_BUDGET[thinking] : null;
       if (budget !== null) env = { ...process.env, MAX_THINKING_TOKENS: budget };
       const args = ["-p", prompt, "--model", model, "--output-format", "json"];
-      // Grant implementers write access. In headless (-p) mode Claude auto-denies
-      // permissioned tools (Edit/Write/Bash) by default, so without this an
-      // implementer runs but makes no changes — the mirror of codex's
-      // workspace-write + never-approve. Reviewers stay on the default read-only
-      // mode (Read/Grep/Glob need no permission; any write is denied), matching
-      // codex's read-only sandbox.
-      if (!readOnly) args.push("--dangerously-skip-permissions");
+      // Enforce the stage's sandbox posture EXPLICITLY — never rely on Claude's
+      // implicit default. A user's settings.json may set
+      // permissions.defaultMode:"auto" (auto-approves Edit/Write/Bash), so the
+      // mere absence of --dangerously-skip-permissions does NOT make a stage
+      // read-only; a "reviewer" would silently mutate the workspace. Verified
+      // against claude 2.1.216.
+      if (readOnly) {
+        // Hard-deny every write vector so reviewers can't touch the tree,
+        // regardless of the user's default permission mode. Bash is included
+        // because `echo > file` / `rm` are writes. Read/Grep/Glob stay allowed.
+        // Mirrors codex's read-only sandbox.
+        args.push("--disallowedTools", "Edit,Write,MultiEdit,NotebookEdit,Bash");
+      } else {
+        // Implementers get full workspace-write access — the mirror of codex's
+        // workspace-write + never-approve.
+        args.push("--dangerously-skip-permissions");
+      }
       // Resume the prior session so re-review keeps its accumulated context.
       if (resumeSessionId) args.push("--resume", resumeSessionId);
       const stdout = await spawn(bin, args, cwd, { timeoutMs, env });

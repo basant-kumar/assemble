@@ -37,11 +37,18 @@ describe("claudeAdapter", () => {
     await claudeAdapter(bin).run({ prompt: "hi", model: "opus", cwd: process.cwd() });
     expect(readFileSync(argfile, "utf8")).toContain("--dangerously-skip-permissions");
   });
-  it("keeps reviewers read-only (no write-permission flag)", async () => {
+  it("enforces reviewer read-only by hard-denying write tools", async () => {
     const argfile = join(mkdtempSync(join(tmpdir(), "asm-args-")), "args");
     const bin = fakeBin(`printf '%s\\n' "$@" > ${argfile}\n` + `echo '{"result":"ok"}'`);
     await claudeAdapter(bin).run({ prompt: "hi", model: "opus", cwd: process.cwd(), readOnly: true });
-    expect(readFileSync(argfile, "utf8")).not.toContain("--dangerously-skip-permissions");
+    const args = readFileSync(argfile, "utf8");
+    // Must never grant write access...
+    expect(args).not.toContain("--dangerously-skip-permissions");
+    // ...and must EXPLICITLY deny every write vector, so a user's
+    // settings.json (permissions.defaultMode:"auto") can't silently let a
+    // reviewer mutate the workspace. Merely omitting the skip flag is not enough.
+    expect(args).toContain("--disallowedTools");
+    expect(args).toContain("Edit,Write,MultiEdit,NotebookEdit,Bash");
   });
 });
 
