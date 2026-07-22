@@ -1,6 +1,6 @@
 {
   "name": "@bugbeast/assemble",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Multi-agent workflow orchestrator: plan, review, implement, and release with gated, schema-validated agent pipelines.",
   "license": "MIT",
   "author": "bugbeast",
