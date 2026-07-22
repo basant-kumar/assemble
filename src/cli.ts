@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { createRequire } from "node:module";
 import { loadConfig, ConfigError, type AssembleConfig } from "./config.js";
 import { readLedger, deriveStageStatus } from "./ledger.js";
 import { renderAgent } from "./theme.js";
@@ -26,7 +27,10 @@ const ICONS: Record<StageStatus, string> = {
 };
 
 export function buildProgram(dir: string, io: { out: (s: string) => void } = { out: console.log }): Command {
-  const program = new Command("assemble").description("Avengers, assemble your AI dev team");
+  const pkg = createRequire(import.meta.url)("../package.json") as { version: string };
+  const program = new Command("assemble")
+    .description("Avengers, assemble your AI dev team")
+    .version(pkg.version, "-v, --version", "print the installed assemble version");
   let config: AssembleConfig | null = null;
   try { config = loadConfig(dir); } catch { /* no config yet — built-ins only */ }
 
